@@ -2,6 +2,7 @@ const { LAKES, LEVELS, findConflicts, isSolved } = window.LoonPuzzle;
 const Playtest = window.LoonPlaytest;
 const Race = window.LoonRace;
 const STORAGE_KEY = 'loon-lakes-progress-v1';
+const AUDIO_MIX_VERSION = 2;
 const REGION_COLORS = ['#b9dfd5','#d8e7bd','#f1d4a8','#b9d7ea','#d8c8e7','#f0bfc0','#c9ddd2','#e8d9a6'];
 const VICTORY_LINES = [
   { cheer: 'Oh fer cute!', message: 'You gave every loon some elbow room. The Mississippi may proceed.', feather: 'Headwaters Feather' },
@@ -16,7 +17,7 @@ const VICTORY_LINES = [
 const state = {
   completed: new Set(), ratings: {}, results: {}, boards: {}, runStates: {}, currentLake: null,
   level: null, board: [], lockedMarks: new Set(), tool: 'loon', hintTokens: 3, featherBank: 0,
-  run: null, timerInterval: null, sound: true, music: true, effectsVolume: .55, musicVolume: .18,
+  run: null, timerInterval: null, sound: true, music: true, effectsVolume: .85, musicVolume: .08,
   haptics: true, tutorialSeen: false, tutorial: null, view: 'map',
   pendingFeedbackMilestone: 0, viewBeforeLab: 'map', lastShareMetrics: null
 };
@@ -29,8 +30,7 @@ const NATURAL_SOUND_FILES = {
   yodel: 'assets/loon-yodel.m4a',
   splash: 'assets/splash.m4a'
 };
-const naturalSoundBuffers = new Map();
-const naturalSoundLoads = new Map();
+const naturalSoundPlayers = new Map();
 let backgroundMusicAudio = null;
 let backgroundMusicSource = null;
 let backgroundMusicGain = null;
@@ -70,8 +70,13 @@ function loadProgress() {
     state.featherBank = Number.isInteger(saved.featherBank) ? saved.featherBank : Object.values(state.ratings).reduce((sum, value) => sum + (Number(value) || 0), 0);
     state.sound = saved.sound !== false;
     state.music = saved.music !== false;
-    state.effectsVolume = Number.isFinite(saved.effectsVolume) ? Math.max(0, Math.min(1, saved.effectsVolume)) : .55;
-    state.musicVolume = Number.isFinite(saved.musicVolume) ? Math.max(0, Math.min(1, saved.musicVolume)) : .18;
+    if (saved.audioMixVersion === AUDIO_MIX_VERSION) {
+      state.effectsVolume = Number.isFinite(saved.effectsVolume) ? Math.max(0, Math.min(1, saved.effectsVolume)) : .85;
+      state.musicVolume = Number.isFinite(saved.musicVolume) ? Math.max(0, Math.min(1, saved.musicVolume)) : .08;
+    } else {
+      state.effectsVolume = .85;
+      state.musicVolume = .08;
+    }
     state.haptics = saved.haptics !== false;
     state.tutorialSeen = saved.tutorialSeen === true;
   } catch (_) { /* start fresh */ }
@@ -87,6 +92,7 @@ function saveProgress() {
     completed: [...state.completed], ratings: state.ratings, results: state.results, boards: state.boards,
     runStates: state.runStates, hintTokens: state.hintTokens, featherBank: state.featherBank,
     sound: state.sound, music: state.music, effectsVolume: state.effectsVolume, musicVolume: state.musicVolume,
+    audioMixVersion: AUDIO_MIX_VERSION,
     haptics: state.haptics, tutorialSeen: state.tutorialSeen
   }));
 }
@@ -444,46 +450,32 @@ function preloadNaturalSounds() {
   if (!state.sound) return;
   const ctx = getAudioContext();
   if (!ctx) return;
-  Object.entries(NATURAL_SOUND_FILES).forEach(([name, url]) => {
-    if (naturalSoundBuffers.has(name) || naturalSoundLoads.has(name)) return;
-    const load = fetch(url)
-      .then(response => {
-        if (!response.ok) throw new Error(`Sound request failed: ${response.status}`);
-        return response.arrayBuffer();
-      })
-      .then(data => ctx.decodeAudioData(data))
-      .then(buffer => { naturalSoundBuffers.set(name, buffer); return buffer; })
-      .catch(() => null);
-    naturalSoundLoads.set(name, load);
-  });
+  Object.keys(NATURAL_SOUND_FILES).forEach(name => getNaturalSoundPlayer(ctx, name));
 }
 
-function playNaturalSound(ctx, name, options = {}) {
-  const { offset = 0, duration = 1, volume = 1, rate = 1 } = options;
-  const buffer = naturalSoundBuffers.get(name);
-  if (!buffer) {
-    preloadNaturalSounds();
-    const load = naturalSoundLoads.get(name);
-    if (!load) return false;
-    void load.then(loadedBuffer => {
-      if (!loadedBuffer || !state.sound) return;
-      const liveContext = getAudioContext();
-      if (liveContext) playNaturalSound(liveContext, name, options);
-    });
-    return true;
+function getNaturalSoundPlayer(ctx, name) {
+  if (!NATURAL_SOUND_FILES[name]) return null;
+  if (!naturalSoundPlayers.has(name)) {
+    const audio = new Audio(NATURAL_SOUND_FILES[name]);
+    audio.preload = 'auto';
+    audio.playsInline = true;
+    audio.volume = 1;
+    const source = ctx.createMediaElementSource(audio);
+    const gain = ctx.createGain();
+    source.connect(gain).connect(getEffectsOutput(ctx));
+    naturalSoundPlayers.set(name, { audio, gain });
   }
-  const startOffset = Math.min(offset, Math.max(0, buffer.duration - .05));
-  const clipDuration = Math.min(duration, Math.max(.05, buffer.duration - startOffset));
-  const source = ctx.createBufferSource();
-  const gain = ctx.createGain();
-  source.buffer = buffer;
-  source.playbackRate.value = rate;
-  gain.gain.setValueAtTime(.0001, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(volume, ctx.currentTime + .025);
-  gain.gain.setValueAtTime(volume, ctx.currentTime + Math.max(.03, clipDuration - .1));
-  gain.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + clipDuration);
-  source.connect(gain).connect(getEffectsOutput(ctx));
-  source.start(ctx.currentTime, startOffset, clipDuration);
+  return naturalSoundPlayers.get(name);
+}
+
+function playNaturalSound(ctx, name, { offset = 0, volume = 1, rate = 1 } = {}) {
+  const player = getNaturalSoundPlayer(ctx, name);
+  if (!player) return false;
+  player.audio.pause();
+  player.audio.currentTime = offset;
+  player.audio.playbackRate = rate;
+  player.gain.gain.setTargetAtTime(volume, ctx.currentTime, .01);
+  void player.audio.play().catch(() => { /* waits for the next direct tap */ });
   return true;
 }
 
