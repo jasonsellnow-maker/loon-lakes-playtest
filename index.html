@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#123f47">
+  <meta name="description" content="A cozy Minnesota loon logic puzzle adventure.">
+  <meta property="og:title" content="Loon Lakes">
+  <meta property="og:description" content="A cozy Minnesota logic puzzle adventure with 24 lake challenges.">
+  <meta property="og:image" content="og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Loon Lakes">
+  <meta name="twitter:description" content="A cozy Minnesota logic puzzle adventure with 24 lake challenges.">
+  <meta name="twitter:image" content="og.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="loon-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css?v=6">
+  <title>Loon Lakes</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <button class="icon-button hidden" id="back-button" aria-label="Return to lake map">←</button>
+      <div class="brand" aria-label="Loon Lakes">
+        <img src="loon-icon.svg" alt="" width="42" height="42">
+        <div><strong>Loon Lakes</strong><span>Minnesota logic trails</span></div>
+      </div>
+      <button class="icon-button" id="lab-button" aria-label="Open playtest lab">▥</button>
+      <button class="icon-button" id="sound-button" aria-label="Toggle sound" aria-pressed="true">♪</button>
+    </header>
+
+    <main>
+      <section id="map-view" class="view active" aria-labelledby="map-heading">
+        <div class="hero-card">
+          <div>
+            <p class="eyebrow">Explore Minnesota</p>
+            <h1 id="map-heading">Find a quiet place for every loon.</h1>
+            <p>Each row, column, and colored water region needs exactly one loon. Loons cannot touch—not even diagonally.</p>
+          </div>
+          <div class="hero-ripples" aria-hidden="true"><i></i><i></i><i></i></div>
+        </div>
+
+        <div class="progress-card">
+          <div><span>Trail progress</span><strong id="progress-label">0 of 6 lakes</strong></div>
+          <div class="progress-track"><span id="progress-fill"></span></div>
+        </div>
+
+        <div id="lake-list" class="lake-list" aria-label="Minnesota lake puzzles"></div>
+
+        <details class="about-card">
+          <summary>Prototype notes and sources</summary>
+          <p>Lake silhouettes are original, stylized placeholders. Production map art will be derived from documented Minnesota DNR public data. The prototype uses an original chime until a commercially reusable loon recording is selected and credited.</p>
+          <p><a href="ATTRIBUTIONS.md">View attribution plan</a></p>
+        </details>
+      </section>
+
+      <section id="test-view" class="view" aria-labelledby="test-title">
+        <div class="test-hero">
+          <p class="eyebrow">Private playtest lab</p>
+          <h1 id="test-title">Is the flock having fun?</h1>
+          <p>Results stay on this device until you download them. No names, email addresses, or precise locations are collected.</p>
+        </div>
+        <div class="metric-grid">
+          <div><span>Sessions</span><strong id="metric-sessions">0</strong></div>
+          <div><span>Puzzles finished</span><strong id="metric-completions">0</strong></div>
+          <div><span>Per session</span><strong id="metric-per-session">0</strong></div>
+          <div><span>Average fun</span><strong id="metric-fun">—</strong></div>
+        </div>
+        <div class="funnel-card">
+          <h2>Engagement funnel</h2>
+          <div class="funnel-row"><span>Tutorial completion</span><strong id="metric-tutorial">0%</strong></div>
+          <div class="funnel-track"><i id="bar-tutorial"></i></div>
+          <div class="funnel-row"><span>First-puzzle completion</span><strong id="metric-first-puzzle">0%</strong></div>
+          <div class="funnel-track"><i id="bar-first-puzzle"></i></div>
+          <div class="detail-grid">
+            <div><span>Average solve</span><strong id="metric-solve-time">—</strong></div>
+            <div><span>Hints used</span><strong id="metric-hints">0</strong></div>
+            <div><span>Resets</span><strong id="metric-resets">0</strong></div>
+            <div><span>Quit hotspot</span><strong id="metric-quit">None yet</strong></div>
+          </div>
+        </div>
+        <div class="lab-actions">
+          <button class="primary-button" id="copy-link-button">Copy tester link</button>
+          <button class="secondary-button" id="export-json-button">Download full report</button>
+          <button class="secondary-button" id="export-csv-button">Download event spreadsheet</button>
+          <button class="secondary-button" id="feedback-button">Add tester feedback</button>
+          <button class="secondary-button" id="issue-button">Report a problem</button>
+        </div>
+        <div class="lab-note" id="share-note">The tester link will use this page’s current address.</div>
+        <div class="lab-note"><strong id="feedback-count">0</strong> feedback forms and <strong id="issue-count">0</strong> issue reports saved locally.</div>
+      </section>
+
+      <section id="level-view" class="view" aria-labelledby="journey-title">
+        <div class="journey-hero">
+          <svg id="journey-shape" class="journey-shape" viewBox="0 0 128 84" aria-hidden="true"><path></path></svg>
+          <div>
+            <p class="eyebrow">Four-puzzle journey</p>
+            <h1 id="journey-title">Lake Itasca</h1>
+            <p id="journey-fact"></p>
+            <a id="journey-source" target="_blank" rel="noopener">Source ↗</a>
+          </div>
+        </div>
+        <div class="journey-summary"><span>Lake feathers</span><strong id="journey-progress">0 of 4</strong></div>
+        <div id="puzzle-list" class="puzzle-list" aria-label="Lake puzzle levels"></div>
+      </section>
+
+      <section id="game-view" class="view" aria-labelledby="lake-title">
+        <div class="lake-heading">
+          <div>
+            <p class="eyebrow" id="level-number">Lake 1</p>
+            <h1 id="lake-title">Lake Itasca</h1>
+            <div class="difficulty-chip" id="difficulty-chip">Easy</div>
+            <div class="lake-lore"><span>Lake lore</span><p id="lake-fact"></p><a id="fact-source" target="_blank" rel="noopener">Source ↗</a><button id="tutorial-button" class="tutorial-replay hidden" type="button">Replay the loon lesson</button></div>
+          </div>
+          <div class="counter"><strong id="loon-count">0/5</strong><span>loons placed</span></div>
+        </div>
+
+        <div id="tutorial-coach" class="tutorial-coach" hidden>
+          <div class="coach-loon" aria-hidden="true">●</div>
+          <div><span id="tutorial-step">Loon lesson</span><strong id="tutorial-message"></strong></div>
+          <button id="tutorial-skip" type="button">Skip</button>
+        </div>
+        <div class="rule-strip" id="rule-message" role="status">Place one loon in every row, column, and region.</div>
+        <div id="puzzle-grid" class="puzzle-grid" aria-label="Loon logic puzzle grid"></div>
+
+        <div class="toolbox" aria-label="Puzzle tools">
+          <button class="tool active" data-tool="loon" aria-pressed="true"><span class="mini-loon">●</span><strong>Loon</strong><small>place</small></button>
+          <button class="tool" data-tool="water" aria-pressed="false"><span class="water-x">×</span><strong>Ripple</strong><small>rule out</small></button>
+          <button class="tool" id="hint-button"><span>✦</span><strong>Hint</strong><small id="hint-count">3 left</small></button>
+          <button class="tool" id="reset-button"><span>↺</span><strong>Reset</strong><small>board</small></button>
+        </div>
+        <button class="report-link" id="game-issue-button">Something look wrong? Report it</button>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="win-dialog" class="win-dialog">
+    <div class="celebration-burst" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="win-loon"><img src="loon-icon.svg" alt=""></div>
+    <p class="eyebrow" id="win-cheer">Puzzle complete</p>
+    <h2 id="win-title">Lake Itasca is peaceful!</h2>
+    <p id="win-message">Every loon found its own quiet stretch of water.</p>
+    <div class="feather-badge"><span>Feather earned</span><strong id="feather-name">Headwaters Feather</strong></div>
+    <div class="feather-score" id="feather-score" aria-label="Three feather rating">🪶 🪶 🪶</div>
+    <button class="primary-button" id="next-button">Continue the trail</button>
+    <button class="text-button" id="map-button">Back to lake map</button>
+  </dialog>
+
+  <dialog id="feedback-dialog" class="form-dialog">
+    <form id="feedback-form">
+      <p class="eyebrow">Two-minute check-in</p>
+      <h2>How was the lake?</h2>
+      <label>How fun was it?<select id="feedback-fun" required><option value="">Choose 1–5</option><option value="1">1 · Not fun</option><option value="2">2</option><option value="3">3 · Pretty good</option><option value="4">4</option><option value="5">5 · Loon-tastic</option></select></label>
+      <label>Difficulty<select id="feedback-difficulty" required><option value="">Choose one</option><option>Too easy</option><option>Just right</option><option>Too hard</option></select></label>
+      <label>Would you play another lake?<select id="feedback-return" required><option value="">Choose one</option><option>Yes</option><option>Maybe</option><option>No</option></select></label>
+      <label>Favorite moment or joke<input id="feedback-favorite" maxlength="180" placeholder="Optional"></label>
+      <label>Anything we should change?<textarea id="feedback-comments" maxlength="500" placeholder="Optional"></textarea></label>
+      <button class="primary-button" type="submit">Save feedback</button>
+      <button class="text-button" id="feedback-skip" type="button">Maybe later</button>
+    </form>
+  </dialog>
+
+  <dialog id="issue-dialog" class="form-dialog">
+    <form id="issue-form">
+      <p class="eyebrow">Bug catcher</p>
+      <h2>What went wonky?</h2>
+      <p id="issue-context" class="issue-context"></p>
+      <label>Describe the problem<textarea id="issue-description" maxlength="700" required placeholder="What did you expect, and what happened instead?"></textarea></label>
+      <button class="primary-button" type="submit">Save problem report</button>
+      <button class="text-button" id="issue-cancel" type="button">Cancel</button>
+    </form>
+  </dialog>
+
+  <script src="puzzles.js?v=6"></script>
+  <script src="playtest.js?v=6"></script>
+  <script src="app.js?v=6"></script>
+</body>
+</html>

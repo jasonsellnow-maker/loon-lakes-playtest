@@ -1,0 +1,7 @@
+{
+  "name": "loon-lakes-playtest",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

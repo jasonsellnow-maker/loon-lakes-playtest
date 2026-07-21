@@ -1,0 +1,10 @@
+{
+  "name": "Loon Lakes: Minnesota Logic Trails",
+  "short_name": "Loon Lakes",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f5f1e7",
+  "theme_color": "#123f47",
+  "description": "A cozy Minnesota loon logic puzzle adventure.",
+  "icons": [{ "src": "loon-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
