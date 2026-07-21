@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Stylized common loon">
+  <defs><linearGradient id="w" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#a8e1dd"/><stop offset="1" stop-color="#4ca9ad"/></linearGradient></defs>
+  <circle cx="64" cy="64" r="61" fill="url(#w)"/>
+  <path d="M16 88c21-8 74-8 96 0-19 24-76 25-96 0Z" fill="#dff7f3" opacity=".72"/>
+  <ellipse cx="67" cy="75" rx="39" ry="23" fill="#162d32"/>
+  <path d="M43 69c15-15 39-13 53 1-13 4-19 13-22 24-18 0-29-8-31-25Z" fill="#f2f5ea"/>
+  <path d="M51 70c17-8 32-4 43 2-12 4-18 10-21 20-9-10-14-14-22-22Z" fill="#253f42"/>
+  <g fill="#f5f6ec"><circle cx="60" cy="70" r="2.1"/><circle cx="69" cy="69" r="2.1"/><circle cx="78" cy="71" r="2.1"/><circle cx="65" cy="78" r="2.1"/><circle cx="75" cy="80" r="2.1"/></g>
+  <path d="M76 59c-2-15 0-28 9-36 12-4 23 5 21 17-1 10-9 16-18 20Z" fill="#13292e"/>
+  <path d="M79 52c7 3 13 3 21-1l-3 8c-7 4-13 4-19 1Z" fill="#f4f6eb"/>
+  <circle cx="97" cy="34" r="4" fill="#b9282e"/><circle cx="98" cy="33" r="1.2" fill="#fff"/>
+  <path d="M105 37l20 6-20 5Z" fill="#26383a"/>
+  <path d="M28 82c-8 1-15 4-21 8 9 2 17 2 25 0Z" fill="#142a2e"/>
+</svg>

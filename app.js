@@ -16,12 +16,24 @@ const VICTORY_LINES = [
 const state = {
   completed: new Set(), ratings: {}, results: {}, boards: {}, runStates: {}, currentLake: null,
   level: null, board: [], lockedMarks: new Set(), tool: 'loon', hintTokens: 3, featherBank: 0,
-  run: null, timerInterval: null, sound: true, tutorialSeen: false, tutorial: null, view: 'map',
+  run: null, timerInterval: null, sound: true, music: true, haptics: true, tutorialSeen: false, tutorial: null, view: 'map',
   pendingFeedbackMilestone: 0, viewBeforeLab: 'map', lastShareMetrics: null
 };
 
+let feedbackAudioContext = null;
+const NATURAL_SOUND_FILES = {
+  wail: 'assets/loon-wail.m4a',
+  tremolo: 'assets/loon-tremolo.m4a',
+  yodel: 'assets/loon-yodel.m4a',
+  splash: 'assets/splash.m4a'
+};
+const naturalSoundBuffers = new Map();
+const naturalSoundLoads = new Map();
+let backgroundMusicAudio = null;
+
 const els = Object.fromEntries([
-  'map-view','test-view','level-view','game-view','back-button','lab-button','sound-button','lake-list','progress-label','progress-fill',
+  'map-view','test-view','level-view','game-view','back-button','lab-button','settings-button','settings-dialog','sound-button','music-button',
+  'haptic-button','reset-progress-button','reset-progress-dialog','confirm-reset-progress-button','lake-list','progress-label','progress-fill',
   'journey-title','journey-kicker','journey-shape','journey-fact','journey-source','journey-progress','puzzle-list',
   'level-number','lake-title','difficulty-chip','lake-fact','fact-source','tutorial-button','tutorial-coach',
   'tutorial-step','tutorial-message','tutorial-skip','loon-count','rule-message','puzzle-grid','hint-button',
@@ -52,9 +64,13 @@ function loadProgress() {
     state.hintTokens = Number.isInteger(saved.hintTokens) ? saved.hintTokens : 3;
     state.featherBank = Number.isInteger(saved.featherBank) ? saved.featherBank : Object.values(state.ratings).reduce((sum, value) => sum + (Number(value) || 0), 0);
     state.sound = saved.sound !== false;
+    state.music = saved.music !== false;
+    state.haptics = saved.haptics !== false;
     state.tutorialSeen = saved.tutorialSeen === true;
   } catch (_) { /* start fresh */ }
   updateSoundButton();
+  updateMusicButton();
+  updateHapticButton();
   updateWallet();
 }
 
@@ -62,7 +78,7 @@ function saveProgress() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     completed: [...state.completed], ratings: state.ratings, results: state.results, boards: state.boards,
     runStates: state.runStates, hintTokens: state.hintTokens, featherBank: state.featherBank,
-    sound: state.sound, tutorialSeen: state.tutorialSeen
+    sound: state.sound, music: state.music, haptics: state.haptics, tutorialSeen: state.tutorialSeen
   }));
 }
 
@@ -366,8 +382,148 @@ function logMistake(kind, index) {
   Playtest.track('mistake_made', { puzzleId: state.level.id, lakeId: state.level.lakeId, kind, cell: index, mistakes: state.run.mistakes });
 }
 
+function vibrate(pattern) {
+  if (state.haptics && typeof navigator.vibrate === 'function') navigator.vibrate(pattern);
+}
+
+function getAudioContext() {
+  if (!state.sound) return null;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+  feedbackAudioContext ||= new AudioContext();
+  if (feedbackAudioContext.state === 'suspended') void feedbackAudioContext.resume();
+  return feedbackAudioContext;
+}
+
+function getBackgroundMusic() {
+  if (!backgroundMusicAudio) {
+    backgroundMusicAudio = new Audio('assets/background-music.m4a');
+    backgroundMusicAudio.loop = true;
+    backgroundMusicAudio.preload = 'auto';
+    backgroundMusicAudio.volume = .18;
+  }
+  return backgroundMusicAudio;
+}
+
+function startBackgroundMusic() {
+  if (!state.music) return;
+  const music = getBackgroundMusic();
+  if (music.paused) void music.play().catch(() => { /* waits for the next user gesture */ });
+}
+
+function stopBackgroundMusic() {
+  backgroundMusicAudio?.pause();
+}
+
+function preloadNaturalSounds() {
+  if (!state.sound) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  Object.entries(NATURAL_SOUND_FILES).forEach(([name, url]) => {
+    if (naturalSoundBuffers.has(name) || naturalSoundLoads.has(name)) return;
+    const load = fetch(url)
+      .then(response => {
+        if (!response.ok) throw new Error(`Sound request failed: ${response.status}`);
+        return response.arrayBuffer();
+      })
+      .then(data => ctx.decodeAudioData(data))
+      .then(buffer => { naturalSoundBuffers.set(name, buffer); return buffer; })
+      .catch(() => null);
+    naturalSoundLoads.set(name, load);
+  });
+}
+
+function playNaturalSound(ctx, name, { offset = 0, duration = 1, volume = .2, rate = 1 } = {}) {
+  const buffer = naturalSoundBuffers.get(name);
+  if (!buffer) { preloadNaturalSounds(); return false; }
+  const startOffset = Math.min(offset, Math.max(0, buffer.duration - .05));
+  const clipDuration = Math.min(duration, Math.max(.05, buffer.duration - startOffset));
+  const source = ctx.createBufferSource();
+  const gain = ctx.createGain();
+  source.buffer = buffer;
+  source.playbackRate.value = rate;
+  gain.gain.setValueAtTime(.0001, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(volume, ctx.currentTime + .025);
+  gain.gain.setValueAtTime(volume, ctx.currentTime + Math.max(.03, clipDuration - .1));
+  gain.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + clipDuration);
+  source.connect(gain).connect(ctx.destination);
+  source.start(ctx.currentTime, startOffset, clipDuration);
+  return true;
+}
+
+function scheduleTone(ctx, { at = 0, from, to = from, duration = .2, volume = .055, type = 'sine' }) {
+  const start = ctx.currentTime + at;
+  const oscillator = ctx.createOscillator();
+  const gain = ctx.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(from, start);
+  oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, to), start + duration);
+  gain.gain.setValueAtTime(.0001, start);
+  gain.gain.exponentialRampToValueAtTime(volume, start + Math.min(.018, duration / 3));
+  gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
+  oscillator.connect(gain).connect(ctx.destination);
+  oscillator.start(start);
+  oscillator.stop(start + duration + .02);
+}
+
+function scheduleSplash(ctx, { at = 0, duration = .14, volume = .045, frequency = 1250 } = {}) {
+  const start = ctx.currentTime + at;
+  const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * duration), ctx.sampleRate);
+  const samples = buffer.getChannelData(0);
+  for (let index = 0; index < samples.length; index++) samples[index] = (Math.random() * 2 - 1) * (1 - index / samples.length);
+  const source = ctx.createBufferSource();
+  const filter = ctx.createBiquadFilter();
+  const gain = ctx.createGain();
+  filter.type = 'bandpass';
+  filter.frequency.value = frequency;
+  filter.Q.value = .8;
+  gain.gain.setValueAtTime(volume, start);
+  gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
+  source.buffer = buffer;
+  source.connect(filter).connect(gain).connect(ctx.destination);
+  source.start(start);
+}
+
+function playActionFeedback(kind) {
+  const patterns = {
+    tap: 7, loon: [16, 14, 22], ripple: 10, mistake: [42, 18, 48],
+    hintNudge: [10, 28, 12], hintReveal: [14, 14, 18, 14, 28], reset: [24, 18, 24]
+  };
+  vibrate(patterns[kind] || patterns.tap);
+  if (kind === 'tap' || !state.sound) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  if (kind === 'loon') {
+    if (!playNaturalSound(ctx, 'wail', { duration: 4, volume: .24 })) {
+      scheduleTone(ctx, { from: 520, to: 760, duration: .15, volume: .05 });
+      scheduleTone(ctx, { at: .12, from: 710, to: 430, duration: .21, volume: .045, type: 'triangle' });
+    }
+  } else if (kind === 'ripple') {
+    if (!playNaturalSound(ctx, 'splash', { duration: 6, volume: .34 })) {
+      scheduleSplash(ctx, { duration: .24, volume: .075, frequency: 1750 });
+      scheduleSplash(ctx, { at: .075, duration: .15, volume: .035, frequency: 3400 });
+      scheduleTone(ctx, { from: 255, to: 72, duration: .2, volume: .055 });
+      scheduleTone(ctx, { at: .055, from: 1150, to: 720, duration: .09, volume: .027 });
+      scheduleTone(ctx, { at: .135, from: 860, to: 540, duration: .08, volume: .019 });
+    }
+  } else if (kind === 'mistake') {
+    if (!playNaturalSound(ctx, 'tremolo', { duration: 4, volume: .29 })) {
+      scheduleTone(ctx, { from: 980, to: 390, duration: .16, volume: .072, type: 'sawtooth' });
+      scheduleTone(ctx, { at: .12, from: 760, to: 320, duration: .13, volume: .06, type: 'triangle' });
+    }
+  } else if (kind === 'hintNudge') {
+    scheduleTone(ctx, { from: 587, duration: .14, volume: .035 });
+    scheduleTone(ctx, { at: .1, from: 784, duration: .2, volume: .038 });
+  } else if (kind === 'hintReveal') {
+    [523, 659, 880].forEach((from, index) => scheduleTone(ctx, { at: index * .085, from, to: from * 1.04, duration: .25, volume: .04 }));
+  } else if (kind === 'reset') {
+    scheduleTone(ctx, { from: 330, to: 180, duration: .22, volume: .035, type: 'triangle' });
+  }
+}
+
 function useCell(index) {
   if (state.lockedMarks.has(index)) {
+    playActionFeedback('tap');
     els['rule-message'].textContent = state.board[index] === 2 ? 'That revealed loon is happily anchored in place.' : 'That training ripple is anchored in place.';
     return;
   }
@@ -375,11 +531,13 @@ function useCell(index) {
     const steps = tutorialSteps();
     const step = steps[state.tutorial.step];
     if (index !== step.target || state.tool !== step.tool) {
+      playActionFeedback('mistake');
       els['rule-message'].textContent = 'Not that puddle—follow the glow, you betcha!';
       document.querySelector(`[data-cell="${step.target}"]`)?.classList.add('tutorial-nudge');
       return;
     }
     state.board[index] = step.tool === 'loon' ? 2 : 1;
+    playActionFeedback(step.tool === 'loon' ? 'loon' : 'ripple');
     state.tutorial.step++;
     if (state.tutorial.step >= steps.length) finishTutorial();
     else { renderBoard(); saveCurrentBoard(); }
@@ -387,15 +545,19 @@ function useCell(index) {
   }
   const row = Math.floor(index / state.level.size);
   const solutionIndex = row * state.level.size + state.level.solution[row];
+  let feedback = 'tap';
   if (state.tool === 'loon') {
     const placing = state.board[index] !== 2;
-    if (placing && index !== solutionIndex) logMistake('wrong_loon', index);
+    if (placing && index !== solutionIndex) { logMistake('wrong_loon', index); feedback = 'mistake'; }
+    else if (placing) feedback = 'loon';
     state.board[index] = placing ? 2 : 0;
   } else {
     const placing = state.board[index] !== 1;
-    if (placing && index === solutionIndex) logMistake('wrong_ripple', index);
+    if (placing && index === solutionIndex) { logMistake('wrong_ripple', index); feedback = 'mistake'; }
+    else if (placing) feedback = 'ripple';
     state.board[index] = placing ? 1 : 0;
   }
+  playActionFeedback(feedback);
   renderBoard();
   if (isSolved(state.board, state.level)) completeLevel();
   else saveCurrentBoard();
@@ -434,6 +596,7 @@ function giveHint(type) {
     state.lockedMarks.add(target);
   } else if (!state.run.nudged.includes(target)) state.run.nudged.push(target);
   Playtest.track('hint_used', { puzzleId: state.level.id, lakeId: state.level.lakeId, hintType: type, tokenCost: cost, remaining: state.hintTokens });
+  playActionFeedback(type === 'reveal' ? 'hintReveal' : 'hintNudge');
   els['hint-dialog'].close();
   renderBoard();
   document.querySelector(`[data-cell="${target}"]`)?.classList.add('hinted');
@@ -511,6 +674,7 @@ function completeLevel() {
 function resetBoard() {
   state.board = starterBoard(state.level);
   state.run.mistakes++;
+  playActionFeedback('reset');
   state.run.revealed.forEach(index => { state.board[index] = 2; });
   state.lockedMarks = new Set([...state.level.starterMarks, ...state.run.revealed]);
   delete state.boards[state.level.id];
@@ -520,15 +684,16 @@ function resetBoard() {
 }
 
 function playCompletionSound() {
+  vibrate([20, 18, 20, 18, 48]);
   if (!state.sound) return;
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return;
-  const ctx = new AudioContext();
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  if (playNaturalSound(ctx, 'yodel', { duration: 6, volume: .25 })) return;
   [392, 523.25, 659.25, 783.99].forEach((frequency, index) => {
     const osc = ctx.createOscillator(), gain = ctx.createGain();
     osc.type = 'sine'; osc.frequency.value = frequency;
     gain.gain.setValueAtTime(0, ctx.currentTime + index * .12);
-    gain.gain.linearRampToValueAtTime(.1, ctx.currentTime + index * .12 + .03);
+    gain.gain.linearRampToValueAtTime(.055, ctx.currentTime + index * .12 + .03);
     gain.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + index * .12 + .5);
     osc.connect(gain).connect(ctx.destination);
     osc.start(ctx.currentTime + index * .12);
@@ -537,10 +702,28 @@ function playCompletionSound() {
 }
 
 function updateSoundButton() {
-  els['sound-button'].textContent = state.sound ? '♪' : '×';
+  els['sound-button'].textContent = `Sound effects: ${state.sound ? 'On' : 'Off'}`;
   els['sound-button'].setAttribute('aria-pressed', String(state.sound));
   els['sound-button'].setAttribute('aria-label', state.sound ? 'Turn sound off' : 'Turn sound on');
 }
+
+function updateMusicButton() {
+  els['music-button'].textContent = `Background music: ${state.music ? 'On' : 'Off'}`;
+  els['music-button'].setAttribute('aria-pressed', String(state.music));
+  els['music-button'].setAttribute('aria-label', state.music ? 'Turn background music off' : 'Turn background music on');
+}
+
+function updateHapticButton() {
+  const supported = typeof navigator.vibrate === 'function';
+  els['haptic-button'].disabled = !supported;
+  els['haptic-button'].textContent = supported ? `Phone vibration: ${state.haptics ? 'On' : 'Off'}` : 'Phone vibration: Not supported';
+  els['haptic-button'].setAttribute('aria-pressed', String(supported && state.haptics));
+}
+
+document.addEventListener('pointerdown', event => {
+  startBackgroundMusic();
+  if (event.pointerType === 'touch' && event.target.closest('button:not(:disabled)')) vibrate(7);
+});
 
 els['lake-list'].addEventListener('click', event => {
   const card = event.target.closest('[data-lake]');
@@ -579,7 +762,35 @@ els['buy-hint-button'].addEventListener('click', () => {
 els['reset-button'].addEventListener('click', resetBoard);
 els['tutorial-button'].addEventListener('click', startTutorial);
 els['tutorial-skip'].addEventListener('click', () => finishTutorial(true));
-els['sound-button'].addEventListener('click', () => { state.sound = !state.sound; updateSoundButton(); saveProgress(); });
+els['sound-button'].addEventListener('click', () => {
+  state.sound = !state.sound;
+  updateSoundButton();
+  if (state.sound) preloadNaturalSounds();
+  saveProgress();
+});
+els['music-button'].addEventListener('click', () => {
+  state.music = !state.music;
+  updateMusicButton();
+  if (state.music) startBackgroundMusic();
+  else stopBackgroundMusic();
+  saveProgress();
+});
+els['settings-button'].addEventListener('click', () => els['settings-dialog'].showModal());
+els['haptic-button'].addEventListener('click', () => {
+  state.haptics = !state.haptics;
+  updateHapticButton();
+  if (state.haptics) vibrate([10, 12, 18]);
+  saveProgress();
+});
+els['reset-progress-button'].addEventListener('click', () => {
+  els['settings-dialog'].close();
+  els['reset-progress-dialog'].showModal();
+});
+els['confirm-reset-progress-button'].addEventListener('click', () => {
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(Playtest.STORAGE_KEY);
+  location.reload();
+});
 els['lab-button'].addEventListener('click', () => {
   if (state.view !== 'test') openLab();
   else if (state.viewBeforeLab === 'game' && state.level) { showView('game'); startTimer(); }
@@ -678,6 +889,7 @@ els['issue-form'].addEventListener('submit', event => {
 });
 
 loadProgress();
-Playtest.startSession({ version: 'race-beta-2', puzzleCount: LEVELS.length });
+preloadNaturalSounds();
+Playtest.startSession({ version: 'race-beta-3', puzzleCount: LEVELS.length });
 renderMap();
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));

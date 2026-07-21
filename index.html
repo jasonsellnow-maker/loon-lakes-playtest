@@ -14,7 +14,7 @@
   <meta name="twitter:image" content="og.png">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="loon-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=16">
   <title>Loon Lakes</title>
 </head>
 <body>
@@ -27,7 +27,7 @@
       </div>
       <div class="wallet" aria-label="Player supplies"><span title="Banked feathers">🪶 <strong id="feather-bank">0</strong></span><span title="Hint tokens">✦ <strong id="hint-bank">3</strong></span></div>
       <button class="icon-button" id="lab-button" aria-label="Open playtest lab">▥</button>
-      <button class="icon-button" id="sound-button" aria-label="Toggle sound" aria-pressed="true">♪</button>
+      <button class="icon-button" id="settings-button" aria-label="Open settings">⚙</button>
     </header>
 
     <main>
@@ -54,7 +54,8 @@
 
         <details class="about-card">
           <summary>Prototype notes and sources</summary>
-          <p>Lake silhouettes are original, stylized placeholders. Production map art will be derived from documented Minnesota DNR public data. The prototype uses an original chime until a commercially reusable loon recording is selected and credited.</p>
+          <p>Lake silhouettes are simplified from the Minnesota DNR Hydrography Dataset so their real shorelines remain recognizable at phone size. Loon cues use a credited CC BY field recording, the splash and background music use credited CC0 recordings, and hint effects are original synthesized mixes.</p>
+          <p><a href="https://www.dnr.state.mn.us/watersheds/wrt.html" target="_blank" rel="noopener">DNR Hydrography source ↗</a></p>
           <p><a href="ATTRIBUTIONS.md">View attribution plan</a></p>
         </details>
       </section>
@@ -191,6 +192,31 @@
     </form>
   </dialog>
 
+  <dialog id="settings-dialog" class="form-dialog settings-dialog">
+    <form method="dialog">
+      <p class="eyebrow">Your nest</p>
+      <h2>Settings</h2>
+      <div class="settings-list">
+        <button class="secondary-button" id="sound-button" type="button" aria-pressed="true">Sound effects: On</button>
+        <button class="secondary-button" id="music-button" type="button" aria-pressed="true">Background music: On</button>
+        <button class="secondary-button" id="haptic-button" type="button" aria-pressed="true">Phone vibration: On</button>
+        <button class="danger-button" id="reset-progress-button" type="button">Reset saved progress</button>
+      </div>
+      <p class="settings-note">Phone vibration depends on browser and device support.</p>
+      <button class="text-button" value="cancel">Done</button>
+    </form>
+  </dialog>
+
+  <dialog id="reset-progress-dialog" class="form-dialog reset-progress-dialog">
+    <form method="dialog">
+      <p class="eyebrow">Fresh flight</p>
+      <h2>Start from the beginning?</h2>
+      <p>This clears completed puzzles, feathers, hints, unfinished boards, results, and private playtest data saved on this device.</p>
+      <button class="danger-button full-button" id="confirm-reset-progress-button" type="button">Yes, reset everything</button>
+      <button class="text-button" value="cancel">Keep my progress</button>
+    </form>
+  </dialog>
+
   <dialog id="feedback-dialog" class="form-dialog">
     <form id="feedback-form">
       <p class="eyebrow">Two-minute check-in</p>
@@ -216,9 +242,9 @@
     </form>
   </dialog>
 
-  <script src="puzzles.js?v=8"></script>
-  <script src="playtest.js?v=8"></script>
-  <script src="race.js?v=8"></script>
-  <script src="app.js?v=8"></script>
+  <script src="puzzles.js?v=16"></script>
+  <script src="playtest.js?v=16"></script>
+  <script src="race.js?v=16"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

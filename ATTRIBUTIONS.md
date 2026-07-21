@@ -2,8 +2,12 @@
 
 ## Prototype assets
 
-- Loon icon and stylized lake silhouettes: original project artwork.
-- Completion sound: synthesized in the browser; no third-party recording is currently bundled.
+- Loon icon: original project artwork.
+- Lake silhouettes: simplified SVG adaptations of official Minnesota DNR Hydrography Dataset waterbody polygons. Source dataset: [DNR Hydrography Dataset](https://www.dnr.state.mn.us/watersheds/wrt.html), distributed through the Minnesota Geospatial Commons.
+- Wail, tremolo, and yodel cues: user-edited excerpts from [“Common Loon 210708.wav” by Robert.Crosley](https://freesound.org/people/Robert.Crosley/sounds/634858/), licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/). Changes: excerpts selected, trimmed, and exported as M4A for game use. The app bundles them as `assets/loon-wail.m4a`, `assets/loon-tremolo.m4a`, and `assets/loon-yodel.m4a`.
+- Ripple cue: user-edited excerpt from [“Splash Recording 1.m4a” by JfishSoM](https://freesound.org/people/JfishSoM/sounds/703511/), dedicated to the public domain under [Creative Commons CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Changes: an excerpt was selected and exported as `assets/splash.m4a` for game use.
+- Background music: user-provided M4A edit of [“donttellmewhy.wav [67 bpm]” by Seth_Makes_Sounds](https://freesound.org/people/Seth_Makes_Sounds/sounds/735089/), dedicated to the public domain under [Creative Commons CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). The app loops it as `assets/background-music.m4a`.
+- Hint, reset, and fallback sound layers: synthesized in the browser as original project sound design.
 - Puzzle layouts: original, solver-verified layouts created for this prototype.
 - Social sharing artwork: AI-generated specifically for this project and stored as `assets/og.png`.
 
@@ -19,7 +23,7 @@
 
 ## Planned production sources
 
-- Lake and waterway reference data: Minnesota Department of Natural Resources watershed and water resources materials. Production artwork should be redrawn and simplified rather than presenting the placeholder silhouettes as geographic maps.
-- Loon recording candidate: “Common Loon 210708.wav” by Robert Crosley on Freesound, licensed CC BY 4.0. It is commercially reusable with attribution, but it has not been downloaded or included yet.
+- Preserve the DNR dataset metadata and download date with the production asset package; the in-app silhouettes are intentionally simplified cartographic adaptations rather than navigational maps.
+- Preserve local copies of all audio source pages, licenses, and downloaded MP3 files with the production asset package.
 
 Before a publisher submission, preserve a copy of every applicable license and source page, include in-app credits, and obtain a separate commercial license or original recording if the publisher requests a completely proprietary asset package.
