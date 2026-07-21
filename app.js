@@ -16,11 +16,14 @@ const VICTORY_LINES = [
 const state = {
   completed: new Set(), ratings: {}, results: {}, boards: {}, runStates: {}, currentLake: null,
   level: null, board: [], lockedMarks: new Set(), tool: 'loon', hintTokens: 3, featherBank: 0,
-  run: null, timerInterval: null, sound: true, music: true, haptics: true, tutorialSeen: false, tutorial: null, view: 'map',
+  run: null, timerInterval: null, sound: true, music: true, effectsVolume: .55, musicVolume: .18,
+  haptics: true, tutorialSeen: false, tutorial: null, view: 'map',
   pendingFeedbackMilestone: 0, viewBeforeLab: 'map', lastShareMetrics: null
 };
 
 let feedbackAudioContext = null;
+let effectsMasterGain = null;
+let effectsCompressor = null;
 const NATURAL_SOUND_FILES = {
   wail: 'assets/loon-wail.m4a',
   tremolo: 'assets/loon-tremolo.m4a',
@@ -33,6 +36,7 @@ let backgroundMusicAudio = null;
 
 const els = Object.fromEntries([
   'map-view','test-view','level-view','game-view','back-button','lab-button','settings-button','settings-dialog','sound-button','music-button',
+  'effects-volume','effects-volume-value','music-volume','music-volume-value',
   'haptic-button','reset-progress-button','reset-progress-dialog','confirm-reset-progress-button','lake-list','progress-label','progress-fill',
   'journey-title','journey-kicker','journey-shape','journey-fact','journey-source','journey-progress','puzzle-list',
   'level-number','lake-title','difficulty-chip','lake-fact','fact-source','tutorial-button','tutorial-coach',
@@ -65,11 +69,14 @@ function loadProgress() {
     state.featherBank = Number.isInteger(saved.featherBank) ? saved.featherBank : Object.values(state.ratings).reduce((sum, value) => sum + (Number(value) || 0), 0);
     state.sound = saved.sound !== false;
     state.music = saved.music !== false;
+    state.effectsVolume = Number.isFinite(saved.effectsVolume) ? Math.max(0, Math.min(1, saved.effectsVolume)) : .55;
+    state.musicVolume = Number.isFinite(saved.musicVolume) ? Math.max(0, Math.min(1, saved.musicVolume)) : .18;
     state.haptics = saved.haptics !== false;
     state.tutorialSeen = saved.tutorialSeen === true;
   } catch (_) { /* start fresh */ }
   updateSoundButton();
   updateMusicButton();
+  updateVolumeControls();
   updateHapticButton();
   updateWallet();
 }
@@ -78,7 +85,8 @@ function saveProgress() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     completed: [...state.completed], ratings: state.ratings, results: state.results, boards: state.boards,
     runStates: state.runStates, hintTokens: state.hintTokens, featherBank: state.featherBank,
-    sound: state.sound, music: state.music, haptics: state.haptics, tutorialSeen: state.tutorialSeen
+    sound: state.sound, music: state.music, effectsVolume: state.effectsVolume, musicVolume: state.musicVolume,
+    haptics: state.haptics, tutorialSeen: state.tutorialSeen
   }));
 }
 
@@ -395,12 +403,27 @@ function getAudioContext() {
   return feedbackAudioContext;
 }
 
+function getEffectsOutput(ctx) {
+  if (!effectsMasterGain) {
+    effectsMasterGain = ctx.createGain();
+    effectsCompressor = ctx.createDynamicsCompressor();
+    effectsCompressor.threshold.value = -18;
+    effectsCompressor.knee.value = 18;
+    effectsCompressor.ratio.value = 4;
+    effectsCompressor.attack.value = .006;
+    effectsCompressor.release.value = .22;
+    effectsMasterGain.connect(effectsCompressor).connect(ctx.destination);
+  }
+  effectsMasterGain.gain.setTargetAtTime(state.effectsVolume, ctx.currentTime, .02);
+  return effectsMasterGain;
+}
+
 function getBackgroundMusic() {
   if (!backgroundMusicAudio) {
     backgroundMusicAudio = new Audio('assets/background-music.m4a');
     backgroundMusicAudio.loop = true;
     backgroundMusicAudio.preload = 'auto';
-    backgroundMusicAudio.volume = .18;
+    backgroundMusicAudio.volume = state.musicVolume;
   }
   return backgroundMusicAudio;
 }
@@ -446,7 +469,7 @@ function playNaturalSound(ctx, name, { offset = 0, duration = 1, volume = .2, ra
   gain.gain.exponentialRampToValueAtTime(volume, ctx.currentTime + .025);
   gain.gain.setValueAtTime(volume, ctx.currentTime + Math.max(.03, clipDuration - .1));
   gain.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + clipDuration);
-  source.connect(gain).connect(ctx.destination);
+  source.connect(gain).connect(getEffectsOutput(ctx));
   source.start(ctx.currentTime, startOffset, clipDuration);
   return true;
 }
@@ -461,7 +484,7 @@ function scheduleTone(ctx, { at = 0, from, to = from, duration = .2, volume = .0
   gain.gain.setValueAtTime(.0001, start);
   gain.gain.exponentialRampToValueAtTime(volume, start + Math.min(.018, duration / 3));
   gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
-  oscillator.connect(gain).connect(ctx.destination);
+  oscillator.connect(gain).connect(getEffectsOutput(ctx));
   oscillator.start(start);
   oscillator.stop(start + duration + .02);
 }
@@ -480,7 +503,7 @@ function scheduleSplash(ctx, { at = 0, duration = .14, volume = .045, frequency 
   gain.gain.setValueAtTime(volume, start);
   gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
   source.buffer = buffer;
-  source.connect(filter).connect(gain).connect(ctx.destination);
+  source.connect(filter).connect(gain).connect(getEffectsOutput(ctx));
   source.start(start);
 }
 
@@ -695,7 +718,7 @@ function playCompletionSound() {
     gain.gain.setValueAtTime(0, ctx.currentTime + index * .12);
     gain.gain.linearRampToValueAtTime(.055, ctx.currentTime + index * .12 + .03);
     gain.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + index * .12 + .5);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(getEffectsOutput(ctx));
     osc.start(ctx.currentTime + index * .12);
     osc.stop(ctx.currentTime + index * .12 + .52);
   });
@@ -711,6 +734,19 @@ function updateMusicButton() {
   els['music-button'].textContent = `Background music: ${state.music ? 'On' : 'Off'}`;
   els['music-button'].setAttribute('aria-pressed', String(state.music));
   els['music-button'].setAttribute('aria-label', state.music ? 'Turn background music off' : 'Turn background music on');
+}
+
+function updateVolumeControls() {
+  const effectsPercent = Math.round(state.effectsVolume * 100);
+  const musicPercent = Math.round(state.musicVolume * 100);
+  els['effects-volume'].value = effectsPercent;
+  els['effects-volume-value'].textContent = `${effectsPercent}%`;
+  els['music-volume'].value = musicPercent;
+  els['music-volume-value'].textContent = `${musicPercent}%`;
+  if (backgroundMusicAudio) backgroundMusicAudio.volume = state.musicVolume;
+  if (effectsMasterGain && feedbackAudioContext) {
+    effectsMasterGain.gain.setTargetAtTime(state.effectsVolume, feedbackAudioContext.currentTime, .02);
+  }
 }
 
 function updateHapticButton() {
@@ -773,6 +809,16 @@ els['music-button'].addEventListener('click', () => {
   updateMusicButton();
   if (state.music) startBackgroundMusic();
   else stopBackgroundMusic();
+  saveProgress();
+});
+els['effects-volume'].addEventListener('input', event => {
+  state.effectsVolume = Number(event.currentTarget.value) / 100;
+  updateVolumeControls();
+  saveProgress();
+});
+els['music-volume'].addEventListener('input', event => {
+  state.musicVolume = Number(event.currentTarget.value) / 100;
+  updateVolumeControls();
   saveProgress();
 });
 els['settings-button'].addEventListener('click', () => els['settings-dialog'].showModal());
