@@ -23,7 +23,6 @@ const state = {
 
 let feedbackAudioContext = null;
 let effectsMasterGain = null;
-let effectsCompressor = null;
 const NATURAL_SOUND_FILES = {
   wail: 'assets/loon-wail.m4a',
   tremolo: 'assets/loon-tremolo.m4a',
@@ -33,6 +32,8 @@ const NATURAL_SOUND_FILES = {
 const naturalSoundBuffers = new Map();
 const naturalSoundLoads = new Map();
 let backgroundMusicAudio = null;
+let backgroundMusicSource = null;
+let backgroundMusicGain = null;
 
 const els = Object.fromEntries([
   'map-view','test-view','level-view','game-view','back-button','lab-button','settings-button','settings-dialog','sound-button','music-button',
@@ -395,7 +396,7 @@ function vibrate(pattern) {
 }
 
 function getAudioContext() {
-  if (!state.sound) return null;
+  if (!state.sound && !state.music) return null;
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return null;
   feedbackAudioContext ||= new AudioContext();
@@ -406,13 +407,7 @@ function getAudioContext() {
 function getEffectsOutput(ctx) {
   if (!effectsMasterGain) {
     effectsMasterGain = ctx.createGain();
-    effectsCompressor = ctx.createDynamicsCompressor();
-    effectsCompressor.threshold.value = -18;
-    effectsCompressor.knee.value = 18;
-    effectsCompressor.ratio.value = 4;
-    effectsCompressor.attack.value = .006;
-    effectsCompressor.release.value = .22;
-    effectsMasterGain.connect(effectsCompressor).connect(ctx.destination);
+    effectsMasterGain.connect(ctx.destination);
   }
   effectsMasterGain.gain.setTargetAtTime(state.effectsVolume, ctx.currentTime, .02);
   return effectsMasterGain;
@@ -423,7 +418,14 @@ function getBackgroundMusic() {
     backgroundMusicAudio = new Audio('assets/background-music.m4a');
     backgroundMusicAudio.loop = true;
     backgroundMusicAudio.preload = 'auto';
-    backgroundMusicAudio.volume = state.musicVolume;
+    backgroundMusicAudio.volume = 1;
+  }
+  const ctx = getAudioContext();
+  if (ctx && !backgroundMusicSource) {
+    backgroundMusicSource = ctx.createMediaElementSource(backgroundMusicAudio);
+    backgroundMusicGain = ctx.createGain();
+    backgroundMusicGain.gain.value = state.musicVolume;
+    backgroundMusicSource.connect(backgroundMusicGain).connect(ctx.destination);
   }
   return backgroundMusicAudio;
 }
@@ -456,9 +458,20 @@ function preloadNaturalSounds() {
   });
 }
 
-function playNaturalSound(ctx, name, { offset = 0, duration = 1, volume = .2, rate = 1 } = {}) {
+function playNaturalSound(ctx, name, options = {}) {
+  const { offset = 0, duration = 1, volume = 1, rate = 1 } = options;
   const buffer = naturalSoundBuffers.get(name);
-  if (!buffer) { preloadNaturalSounds(); return false; }
+  if (!buffer) {
+    preloadNaturalSounds();
+    const load = naturalSoundLoads.get(name);
+    if (!load) return false;
+    void load.then(loadedBuffer => {
+      if (!loadedBuffer || !state.sound) return;
+      const liveContext = getAudioContext();
+      if (liveContext) playNaturalSound(liveContext, name, options);
+    });
+    return true;
+  }
   const startOffset = Math.min(offset, Math.max(0, buffer.duration - .05));
   const clipDuration = Math.min(duration, Math.max(.05, buffer.duration - startOffset));
   const source = ctx.createBufferSource();
@@ -517,23 +530,11 @@ function playActionFeedback(kind) {
   const ctx = getAudioContext();
   if (!ctx) return;
   if (kind === 'loon') {
-    if (!playNaturalSound(ctx, 'wail', { duration: 4, volume: .24 })) {
-      scheduleTone(ctx, { from: 520, to: 760, duration: .15, volume: .05 });
-      scheduleTone(ctx, { at: .12, from: 710, to: 430, duration: .21, volume: .045, type: 'triangle' });
-    }
+    playNaturalSound(ctx, 'wail', { duration: 4 });
   } else if (kind === 'ripple') {
-    if (!playNaturalSound(ctx, 'splash', { duration: 6, volume: .34 })) {
-      scheduleSplash(ctx, { duration: .24, volume: .075, frequency: 1750 });
-      scheduleSplash(ctx, { at: .075, duration: .15, volume: .035, frequency: 3400 });
-      scheduleTone(ctx, { from: 255, to: 72, duration: .2, volume: .055 });
-      scheduleTone(ctx, { at: .055, from: 1150, to: 720, duration: .09, volume: .027 });
-      scheduleTone(ctx, { at: .135, from: 860, to: 540, duration: .08, volume: .019 });
-    }
+    playNaturalSound(ctx, 'splash', { duration: 6 });
   } else if (kind === 'mistake') {
-    if (!playNaturalSound(ctx, 'tremolo', { duration: 4, volume: .29 })) {
-      scheduleTone(ctx, { from: 980, to: 390, duration: .16, volume: .072, type: 'sawtooth' });
-      scheduleTone(ctx, { at: .12, from: 760, to: 320, duration: .13, volume: .06, type: 'triangle' });
-    }
+    playNaturalSound(ctx, 'tremolo', { duration: 4 });
   } else if (kind === 'hintNudge') {
     scheduleTone(ctx, { from: 587, duration: .14, volume: .035 });
     scheduleTone(ctx, { at: .1, from: 784, duration: .2, volume: .038 });
@@ -711,7 +712,7 @@ function playCompletionSound() {
   if (!state.sound) return;
   const ctx = getAudioContext();
   if (!ctx) return;
-  if (playNaturalSound(ctx, 'yodel', { duration: 6, volume: .25 })) return;
+  if (playNaturalSound(ctx, 'yodel', { duration: 6 })) return;
   [392, 523.25, 659.25, 783.99].forEach((frequency, index) => {
     const osc = ctx.createOscillator(), gain = ctx.createGain();
     osc.type = 'sine'; osc.frequency.value = frequency;
@@ -743,7 +744,9 @@ function updateVolumeControls() {
   els['effects-volume-value'].textContent = `${effectsPercent}%`;
   els['music-volume'].value = musicPercent;
   els['music-volume-value'].textContent = `${musicPercent}%`;
-  if (backgroundMusicAudio) backgroundMusicAudio.volume = state.musicVolume;
+  if (backgroundMusicGain && feedbackAudioContext) {
+    backgroundMusicGain.gain.setTargetAtTime(state.musicVolume, feedbackAudioContext.currentTime, .03);
+  }
   if (effectsMasterGain && feedbackAudioContext) {
     effectsMasterGain.gain.setTargetAtTime(state.effectsVolume, feedbackAudioContext.currentTime, .02);
   }
