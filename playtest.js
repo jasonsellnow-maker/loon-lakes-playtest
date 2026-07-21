@@ -92,6 +92,7 @@
       puzzlesPerSession: Number((completions.length / sessions).toFixed(1)),
       averageSolveSeconds: timed.length ? Math.round(timed.reduce((sum, event) => sum + Number(event.durationSeconds), 0) / timed.length) : 0,
       hints: events.filter(event => event.type === 'hint_used').length,
+      mistakes: events.filter(event => event.type === 'mistake_made').length,
       resets: events.filter(event => event.type === 'puzzle_reset').length,
       abandons: abandons.length,
       topQuitPuzzle: topQuit ? topQuit[0] : 'None yet',
@@ -104,7 +105,7 @@
 
   function eventsCsv(input) {
     const data = input || load();
-    const columns = ['timestamp','sessionId','type','puzzleId','lakeId','difficulty','durationSeconds','hintsUsed','rating','view'];
+    const columns = ['timestamp','sessionId','type','puzzleId','lakeId','difficulty','durationSeconds','hintsUsed','mistakes','rating','timePenalty','hintType','tokenCost','view'];
     const escape = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
     return [columns.join(','), ...(data.events || []).map(event => columns.map(column => escape(event[column])).join(','))].join('\n');
   }

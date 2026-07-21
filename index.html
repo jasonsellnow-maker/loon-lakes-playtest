@@ -6,15 +6,15 @@
   <meta name="theme-color" content="#123f47">
   <meta name="description" content="A cozy Minnesota loon logic puzzle adventure.">
   <meta property="og:title" content="Loon Lakes">
-  <meta property="og:description" content="A cozy Minnesota logic puzzle adventure with 24 lake challenges.">
+  <meta property="og:description" content="Race friends through 35 Minnesota loon logic challenges.">
   <meta property="og:image" content="og.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Loon Lakes">
-  <meta name="twitter:description" content="A cozy Minnesota logic puzzle adventure with 24 lake challenges.">
+  <meta name="twitter:description" content="Race friends through 35 Minnesota loon logic challenges.">
   <meta name="twitter:image" content="og.png">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="loon-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=6">
+  <link rel="stylesheet" href="styles.css?v=8">
   <title>Loon Lakes</title>
 </head>
 <body>
@@ -25,6 +25,7 @@
         <img src="loon-icon.svg" alt="" width="42" height="42">
         <div><strong>Loon Lakes</strong><span>Minnesota logic trails</span></div>
       </div>
+      <div class="wallet" aria-label="Player supplies"><span title="Banked feathers">🪶 <strong id="feather-bank">0</strong></span><span title="Hint tokens">✦ <strong id="hint-bank">3</strong></span></div>
       <button class="icon-button" id="lab-button" aria-label="Open playtest lab">▥</button>
       <button class="icon-button" id="sound-button" aria-label="Toggle sound" aria-pressed="true">♪</button>
     </header>
@@ -44,6 +45,10 @@
           <div><span>Trail progress</span><strong id="progress-label">0 of 6 lakes</strong></div>
           <div class="progress-track"><span id="progress-fill"></span></div>
         </div>
+
+        <button class="weekly-drop" id="weekly-drop" type="button">
+          <span>New weekly lake</span><strong id="weekly-lake-name">Lake of the Woods</strong><small id="weekly-lake-fact"></small>
+        </button>
 
         <div id="lake-list" class="lake-list" aria-label="Minnesota lake puzzles"></div>
 
@@ -94,13 +99,13 @@
         <div class="journey-hero">
           <svg id="journey-shape" class="journey-shape" viewBox="0 0 128 84" aria-hidden="true"><path></path></svg>
           <div>
-            <p class="eyebrow">Four-puzzle journey</p>
+            <p class="eyebrow" id="journey-kicker">Five-puzzle journey</p>
             <h1 id="journey-title">Lake Itasca</h1>
             <p id="journey-fact"></p>
             <a id="journey-source" target="_blank" rel="noopener">Source ↗</a>
           </div>
         </div>
-        <div class="journey-summary"><span>Lake feathers</span><strong id="journey-progress">0 of 4</strong></div>
+        <div class="journey-summary"><span>Lake feathers</span><strong id="journey-progress">0 of 5</strong></div>
         <div id="puzzle-list" class="puzzle-list" aria-label="Lake puzzle levels"></div>
       </section>
 
@@ -115,6 +120,13 @@
           <div class="counter"><strong id="loon-count">0/5</strong><span>loons placed</span></div>
         </div>
 
+        <div class="race-hud" aria-label="Current race metrics">
+          <div><span>Time</span><strong id="race-timer">0:00</strong></div>
+          <div><span>Hints</span><strong id="race-hints">0</strong></div>
+          <div><span>Mistakes</span><strong id="race-mistakes">0</strong></div>
+          <div><span>Par</span><strong id="race-par">0:00</strong></div>
+        </div>
+
         <div id="tutorial-coach" class="tutorial-coach" hidden>
           <div class="coach-loon" aria-hidden="true">●</div>
           <div><span id="tutorial-step">Loon lesson</span><strong id="tutorial-message"></strong></div>
@@ -126,7 +138,7 @@
         <div class="toolbox" aria-label="Puzzle tools">
           <button class="tool active" data-tool="loon" aria-pressed="true"><span class="mini-loon">●</span><strong>Loon</strong><small>place</small></button>
           <button class="tool" data-tool="water" aria-pressed="false"><span class="water-x">×</span><strong>Ripple</strong><small>rule out</small></button>
-          <button class="tool" id="hint-button"><span>✦</span><strong>Hint</strong><small id="hint-count">3 left</small></button>
+          <button class="tool" id="hint-button"><span>✦</span><strong>Hint</strong><small id="hint-count">3 tokens</small></button>
           <button class="tool" id="reset-button"><span>↺</span><strong>Reset</strong><small>board</small></button>
         </div>
         <button class="report-link" id="game-issue-button">Something look wrong? Report it</button>
@@ -140,10 +152,43 @@
     <p class="eyebrow" id="win-cheer">Puzzle complete</p>
     <h2 id="win-title">Lake Itasca is peaceful!</h2>
     <p id="win-message">Every loon found its own quiet stretch of water.</p>
-    <div class="feather-badge"><span>Feather earned</span><strong id="feather-name">Headwaters Feather</strong></div>
-    <div class="feather-score" id="feather-score" aria-label="Three feather rating">🪶 🪶 🪶</div>
+    <div class="feather-badge"><span>Feathers earned</span><strong id="feather-name">Headwaters Feather</strong></div>
+    <div class="feather-score" id="feather-score" aria-label="Five feather rating">🪶 🪶 🪶 🪶 🪶</div>
+    <div class="result-grid" aria-label="Puzzle race results">
+      <div><span>Total time</span><strong id="result-time">0:00</strong></div>
+      <div><span>Hints</span><strong id="result-hints">0</strong></div>
+      <div><span>Mistakes</span><strong id="result-mistakes">0</strong></div>
+      <div><span>Score</span><strong id="result-score">5</strong></div>
+    </div>
+    <section class="lake-result" id="lake-result" hidden>
+      <p class="eyebrow">Lake race complete</p>
+      <h3 id="lake-result-title">Lake totals</h3>
+      <div class="result-grid">
+        <div><span>Total time</span><strong id="lake-total-time">0:00</strong></div>
+        <div><span>Hints</span><strong id="lake-total-hints">0</strong></div>
+        <div><span>Mistakes</span><strong id="lake-total-mistakes">0</strong></div>
+        <div><span>Feathers</span><strong id="lake-total-feathers">0</strong></div>
+      </div>
+    </section>
+    <div class="share-actions">
+      <button class="secondary-button" id="share-race-button" type="button">Share race</button>
+      <button class="secondary-button" id="copy-race-button" type="button">Copy challenge</button>
+    </div>
+    <p class="share-status" id="race-share-status" role="status"></p>
     <button class="primary-button" id="next-button">Continue the trail</button>
     <button class="text-button" id="map-button">Back to lake map</button>
+  </dialog>
+
+  <dialog id="hint-dialog" class="form-dialog hint-dialog">
+    <form method="dialog">
+      <p class="eyebrow">A little wing-up</p>
+      <h2>Choose a hint</h2>
+      <p>You have <strong id="hint-dialog-balance">3</strong> hint tokens.</p>
+      <button class="hint-choice" id="nudge-hint-button" value="cancel" type="button"><span>✦</span><strong>Point the way</strong><small>Highlight one correct square · 1 token</small></button>
+      <button class="hint-choice" id="reveal-hint-button" value="cancel" type="button"><span>●</span><strong>Reveal a loon</strong><small>Place and lock one correct loon · 2 tokens</small></button>
+      <div class="hint-shop"><span>🪶 <strong id="shop-feather-balance">0</strong> banked</span><button id="buy-hint-button" type="button">Buy 1 hint · 3 feathers</button></div>
+      <button class="text-button" value="cancel">Keep solving</button>
+    </form>
   </dialog>
 
   <dialog id="feedback-dialog" class="form-dialog">
@@ -171,8 +216,9 @@
     </form>
   </dialog>
 
-  <script src="puzzles.js?v=6"></script>
-  <script src="playtest.js?v=6"></script>
-  <script src="app.js?v=6"></script>
+  <script src="puzzles.js?v=8"></script>
+  <script src="playtest.js?v=8"></script>
+  <script src="race.js?v=8"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

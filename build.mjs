@@ -8,7 +8,7 @@ await rm(dist, { recursive: true, force: true });
 await mkdir(path.join(dist, 'server'), { recursive: true });
 await mkdir(path.join(dist, '.openai'), { recursive: true });
 
-for (const file of ['index.html','styles.css','puzzles.js','playtest.js','app.js','service-worker.js','manifest.webmanifest','ATTRIBUTIONS.md','loon-icon.svg','og.png']) {
+for (const file of ['index.html','styles.css','puzzles.js','playtest.js','race.js','app.js','service-worker.js','manifest.webmanifest','ATTRIBUTIONS.md','loon-icon.svg','og.png']) {
   await cp(path.join(root, file), path.join(client, file));
 }
 

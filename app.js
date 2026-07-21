@@ -1,5 +1,6 @@
 const { LAKES, LEVELS, findConflicts, isSolved } = window.LoonPuzzle;
 const Playtest = window.LoonPlaytest;
+const Race = window.LoonRace;
 const STORAGE_KEY = 'loon-lakes-progress-v1';
 const REGION_COLORS = ['#b9dfd5','#d8e7bd','#f1d4a8','#b9d7ea','#d8c8e7','#f0bfc0','#c9ddd2','#e8d9a6'];
 const VICTORY_LINES = [
@@ -8,22 +9,27 @@ const VICTORY_LINES = [
   { cheer: 'Walleye done!', message: 'The muskies are impressed. They will never admit it.', feather: 'Trophy Walleye Feather' },
   { cheer: 'Eelpoutstanding!', message: 'No eelpout were embarrassed during this puzzle. Probably.', feather: 'Eelpout Party Feather' },
   { cheer: 'Island hopping complete!', message: 'One puzzle down, only 365 islands left to visit.', feather: 'Island Explorer Feather' },
-  { cheer: 'Superior work!', message: 'Cold waves, warm feathers, and absolutely flawless loon placement.', feather: 'Big Lake Feather' }
+  { cheer: 'Superior work!', message: 'Cold waves, warm feathers, and absolutely flawless loon placement.', feather: 'Big Lake Feather' },
+  { cheer: 'Woods you look at that!', message: 'Eight rows of northwoods water and every loon found its own little kingdom.', feather: 'Northwoods Race Feather' }
 ];
 
 const state = {
-  completed: new Set(), ratings: {}, boards: {}, hintState: {}, currentLake: null,
-  level: null, board: [], lockedMarks: new Set(), tool: 'loon', hints: 3,
-  sound: true, tutorialSeen: false, tutorial: null, view: 'map', puzzleStartedAt: 0,
-  pendingFeedbackMilestone: 0, viewBeforeLab: 'map'
+  completed: new Set(), ratings: {}, results: {}, boards: {}, runStates: {}, currentLake: null,
+  level: null, board: [], lockedMarks: new Set(), tool: 'loon', hintTokens: 3, featherBank: 0,
+  run: null, timerInterval: null, sound: true, tutorialSeen: false, tutorial: null, view: 'map',
+  pendingFeedbackMilestone: 0, viewBeforeLab: 'map', lastShareMetrics: null
 };
 
 const els = Object.fromEntries([
   'map-view','test-view','level-view','game-view','back-button','lab-button','sound-button','lake-list','progress-label','progress-fill',
-  'journey-title','journey-shape','journey-fact','journey-source','journey-progress','puzzle-list',
+  'journey-title','journey-kicker','journey-shape','journey-fact','journey-source','journey-progress','puzzle-list',
   'level-number','lake-title','difficulty-chip','lake-fact','fact-source','tutorial-button','tutorial-coach',
   'tutorial-step','tutorial-message','tutorial-skip','loon-count','rule-message','puzzle-grid','hint-button',
-  'hint-count','reset-button','win-dialog','win-title','win-cheer','win-message','feather-name','feather-score',
+  'hint-count','reset-button','race-timer','race-hints','race-mistakes','race-par','feather-bank','hint-bank',
+  'weekly-drop','weekly-lake-name','weekly-lake-fact','win-dialog','win-title','win-cheer','win-message','feather-name','feather-score',
+  'result-time','result-hints','result-mistakes','result-score','lake-result','lake-result-title','lake-total-time',
+  'lake-total-hints','lake-total-mistakes','lake-total-feathers','share-race-button','copy-race-button','race-share-status',
+  'hint-dialog','hint-dialog-balance','nudge-hint-button','reveal-hint-button','shop-feather-balance','buy-hint-button',
   'next-button','map-button','game-issue-button','metric-sessions','metric-completions','metric-per-session','metric-fun',
   'metric-tutorial','metric-first-puzzle','bar-tutorial','bar-first-puzzle','metric-solve-time','metric-hints','metric-resets',
   'metric-quit','feedback-count','issue-count','copy-link-button','share-note','export-json-button','export-csv-button',
@@ -40,18 +46,23 @@ function loadProgress() {
       else if (LEVELS.some(level => level.id === id)) state.completed.add(id);
     });
     state.ratings = saved.ratings || {};
+    state.results = saved.results || {};
     state.boards = saved.boards || {};
-    state.hintState = saved.hintState || {};
+    state.runStates = saved.runStates || {};
+    state.hintTokens = Number.isInteger(saved.hintTokens) ? saved.hintTokens : 3;
+    state.featherBank = Number.isInteger(saved.featherBank) ? saved.featherBank : Object.values(state.ratings).reduce((sum, value) => sum + (Number(value) || 0), 0);
     state.sound = saved.sound !== false;
     state.tutorialSeen = saved.tutorialSeen === true;
   } catch (_) { /* start fresh */ }
   updateSoundButton();
+  updateWallet();
 }
 
 function saveProgress() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    completed: [...state.completed], ratings: state.ratings, boards: state.boards,
-    hintState: state.hintState, sound: state.sound, tutorialSeen: state.tutorialSeen
+    completed: [...state.completed], ratings: state.ratings, results: state.results, boards: state.boards,
+    runStates: state.runStates, hintTokens: state.hintTokens, featherBank: state.featherBank,
+    sound: state.sound, tutorialSeen: state.tutorialSeen
   }));
 }
 
@@ -64,11 +75,16 @@ function isLakeComplete(lake) {
 }
 
 function isLakeUnlocked(index) {
-  return index === 0 || isLakeComplete(LAKES[index - 1]);
+  return index === 0 || LAKES[index].weekly || lakeCompletedCount(LAKES[index]) > 0 || isLakeComplete(LAKES[index - 1]);
 }
 
 function ratingMarkup(rating = 0) {
-  return `<span class="rating" aria-label="${rating} of 3 feathers">${[1,2,3].map(n => `<i class="${n <= rating ? 'earned' : ''}">◆</i>`).join('')}</span>`;
+  return `<span class="rating" aria-label="${rating} of 5 feathers">${[1,2,3,4,5].map(n => `<i class="${n <= rating ? 'earned' : ''}">◆</i>`).join('')}</span>`;
+}
+
+function updateWallet() {
+  els['feather-bank'].textContent = state.featherBank;
+  els['hint-bank'].textContent = state.hintTokens;
 }
 
 function loonMarkup() {
@@ -79,16 +95,21 @@ function renderMap() {
   els['lake-list'].innerHTML = LAKES.map((lake, index) => {
     const done = lakeCompletedCount(lake);
     const unlocked = isLakeUnlocked(index);
-    return `<button class="lake-card ${done === 4 ? 'complete' : ''} ${unlocked ? '' : 'locked'}" data-lake="${lake.id}" ${unlocked ? '' : 'disabled'}>
-      <span class="lake-number">${done === 4 ? '✓' : String(index + 1).padStart(2, '0')}</span>
+    return `<button class="lake-card ${done === lake.puzzles.length ? 'complete' : ''} ${unlocked ? '' : 'locked'}" data-lake="${lake.id}" ${unlocked ? '' : 'disabled'}>
+      <span class="lake-number">${done === lake.puzzles.length ? '✓' : String(index + 1).padStart(2, '0')}</span>
       <svg class="lake-shape" viewBox="0 0 128 84" aria-hidden="true"><path d="${lake.shape}"></path></svg>
-      <span class="lake-copy"><strong>${lake.name}</strong><small>${done}/4 puzzles · ${done === 4 ? 'Lake complete' : unlocked ? 'Continue the journey' : 'Complete the previous lake'}</small><em>${lake.fact}</em></span>
+      <span class="lake-copy"><strong>${lake.name}${lake.weekly ? '<b class="new-badge">New</b>' : ''}</strong><small>${done}/${lake.puzzles.length} puzzles · ${done === lake.puzzles.length ? 'Lake complete' : unlocked ? 'Continue the journey' : 'Complete the previous lake'}</small><em>${lake.fact}</em></span>
       <span class="lake-arrow">${unlocked ? '›' : '●'}</span>
     </button>`;
   }).join('');
   const completed = LEVELS.filter(level => state.completed.has(level.id)).length;
   els['progress-label'].textContent = `${completed} of ${LEVELS.length} puzzles`;
   els['progress-fill'].style.width = `${(completed / LEVELS.length) * 100}%`;
+  const weeklyLake = [...LAKES].reverse().find(lake => lake.weekly) || LAKES.at(-1);
+  els['weekly-lake-name'].textContent = weeklyLake.name;
+  els['weekly-lake-fact'].textContent = weeklyLake.fact;
+  els['weekly-drop'].dataset.lake = weeklyLake.id;
+  updateWallet();
 }
 
 function renderJourney() {
@@ -98,6 +119,7 @@ function renderJourney() {
   els['journey-source'].href = lake.sourceUrl;
   els['journey-source'].textContent = `${lake.sourceName} ↗`;
   els['journey-shape'].querySelector('path').setAttribute('d', lake.shape);
+  els['journey-kicker'].textContent = `${lake.puzzles.length}-puzzle journey${lake.weekly ? ' · New this week' : ''}`;
   els['journey-progress'].textContent = `${lakeCompletedCount(lake)} of ${lake.puzzles.length}`;
   els['puzzle-list'].innerHTML = lake.puzzles.map((puzzle, index) => {
     const complete = state.completed.has(puzzle.id);
@@ -113,9 +135,7 @@ function renderJourney() {
 }
 
 function formatDuration(seconds) {
-  if (!seconds) return '—';
-  const minutes = Math.floor(seconds / 60), remainder = seconds % 60;
-  return minutes ? `${minutes}m ${remainder}s` : `${remainder}s`;
+  return seconds ? Race.formatDuration(seconds) : '—';
 }
 
 function renderLab() {
@@ -139,6 +159,7 @@ function renderLab() {
 
 function openLab() {
   state.viewBeforeLab = state.view === 'test' ? 'map' : state.view;
+  if (state.viewBeforeLab === 'game') { stopTimer(); saveCurrentBoard(); }
   renderLab();
   Playtest.track('playtest_lab_opened', { view: state.viewBeforeLab });
   showView('test');
@@ -200,26 +221,63 @@ function starterBoard(level) {
   return board;
 }
 
+function renderRaceHud() {
+  const run = state.run || { elapsedSeconds: 0, hintsUsed: 0, mistakes: 0 };
+  els['race-timer'].textContent = Race.formatDuration(run.elapsedSeconds);
+  els['race-hints'].textContent = run.hintsUsed;
+  els['race-mistakes'].textContent = run.mistakes;
+  els['race-par'].textContent = Race.formatDuration(state.level?.parSeconds || 0);
+  els['hint-count'].textContent = `${state.hintTokens} token${state.hintTokens === 1 ? '' : 's'}`;
+  updateWallet();
+}
+
+function stopTimer() {
+  if (state.timerInterval) clearInterval(state.timerInterval);
+  state.timerInterval = null;
+}
+
+function startTimer() {
+  stopTimer();
+  renderRaceHud();
+  state.timerInterval = setInterval(() => {
+    if (state.view !== 'game' || !state.run || els['win-dialog'].open) return;
+    state.run.elapsedSeconds++;
+    els['race-timer'].textContent = Race.formatDuration(state.run.elapsedSeconds);
+    if (state.run.elapsedSeconds % 5 === 0) saveCurrentBoard();
+  }, 1000);
+}
+
+function updateHintDialog() {
+  els['hint-dialog-balance'].textContent = state.hintTokens;
+  els['shop-feather-balance'].textContent = state.featherBank;
+  els['nudge-hint-button'].disabled = state.hintTokens < 1;
+  els['reveal-hint-button'].disabled = state.hintTokens < 2;
+  els['buy-hint-button'].disabled = state.featherBank < Race.HINT_COST;
+  renderRaceHud();
+}
+
 function saveCurrentBoard() {
   if (!state.level || state.completed.has(state.level.id)) return;
   state.boards[state.level.id] = [...state.board];
-  state.hintState[state.level.id] = state.hints;
+  state.runStates[state.level.id] = { ...state.run, revealed: [...(state.run?.revealed || [])], nudged: [...(state.run?.nudged || [])] };
   saveProgress();
 }
 
 function startPuzzle(id) {
   state.level = LEVELS.find(level => level.id === String(id));
   state.currentLake = LAKES.find(lake => lake.id === state.level.lakeId);
-  state.lockedMarks = new Set(state.level.starterMarks);
   const savedBoard = state.boards[state.level.id];
   const resumed = Array.isArray(savedBoard);
+  state.run = state.runStates[state.level.id] || { elapsedSeconds: 0, hintsUsed: 0, mistakes: 0, revealed: [], nudged: [] };
+  if (!Array.isArray(state.run.revealed)) state.run.revealed = [];
+  if (!Array.isArray(state.run.nudged)) state.run.nudged = [];
+  state.lockedMarks = new Set([...state.level.starterMarks, ...state.run.revealed]);
   state.board = Array.isArray(savedBoard) && savedBoard.length === state.level.size ** 2 ? [...savedBoard] : starterBoard(state.level);
   state.level.starterMarks.forEach(index => { state.board[index] = 1; });
-  state.hints = Number.isInteger(state.hintState[state.level.id]) ? state.hintState[state.level.id] : state.level.maxHints;
+  state.run.revealed.forEach(index => { state.board[index] = 2; });
   state.tool = 'loon';
   state.tutorial = null;
-  state.puzzleStartedAt = Date.now();
-  els['level-number'].textContent = `${state.currentLake.name} · Puzzle ${state.level.puzzleNumber} of 4`;
+  els['level-number'].textContent = `${state.currentLake.name} · Puzzle ${state.level.puzzleNumber} of ${state.currentLake.puzzles.length}`;
   els['lake-title'].textContent = state.currentLake.name;
   els['difficulty-chip'].textContent = state.level.difficulty;
   els['lake-fact'].textContent = state.level.fact;
@@ -229,6 +287,7 @@ function startPuzzle(id) {
   setTool('loon');
   renderBoard();
   showView('game');
+  startTimer();
   Playtest.track('puzzle_started', { puzzleId: state.level.id, lakeId: state.level.lakeId, difficulty: state.level.difficulty, resumed });
   if (state.level.id === '1-1' && !state.tutorialSeen) startTutorial();
 }
@@ -259,7 +318,6 @@ function updateTutorial() {
 
 function startTutorial() {
   state.board = starterBoard(state.level);
-  state.hints = state.level.maxHints;
   state.tutorial = { step: 0 };
   renderBoard();
   els['rule-message'].textContent = 'Follow the glowing water. Your loon guide has this.';
@@ -294,17 +352,23 @@ function renderBoard() {
   }).join('');
   const count = state.board.filter(value => value === 2).length;
   els['loon-count'].textContent = `${count}/${level.size}`;
-  els['hint-count'].textContent = `${state.hints} left`;
-  els['hint-button'].disabled = state.hints === 0;
+  els['hint-button'].disabled = false;
   els['rule-message'].textContent = conflicts.size ? 'Those loons are too close or share a row, column, or region.' : 'Place one loon in every row, column, and region.';
   els['rule-message'].classList.toggle('warning', conflicts.size > 0);
   els['rule-message'].classList.remove('success');
+  renderRaceHud();
   updateTutorial();
+}
+
+function logMistake(kind, index) {
+  if (!state.run) return;
+  state.run.mistakes++;
+  Playtest.track('mistake_made', { puzzleId: state.level.id, lakeId: state.level.lakeId, kind, cell: index, mistakes: state.run.mistakes });
 }
 
 function useCell(index) {
   if (state.lockedMarks.has(index)) {
-    els['rule-message'].textContent = 'That training ripple is anchored in place.';
+    els['rule-message'].textContent = state.board[index] === 2 ? 'That revealed loon is happily anchored in place.' : 'That training ripple is anchored in place.';
     return;
   }
   if (state.tutorial) {
@@ -321,8 +385,17 @@ function useCell(index) {
     else { renderBoard(); saveCurrentBoard(); }
     return;
   }
-  if (state.tool === 'loon') state.board[index] = state.board[index] === 2 ? 0 : 2;
-  else state.board[index] = state.board[index] === 1 ? 0 : 1;
+  const row = Math.floor(index / state.level.size);
+  const solutionIndex = row * state.level.size + state.level.solution[row];
+  if (state.tool === 'loon') {
+    const placing = state.board[index] !== 2;
+    if (placing && index !== solutionIndex) logMistake('wrong_loon', index);
+    state.board[index] = placing ? 2 : 0;
+  } else {
+    const placing = state.board[index] !== 1;
+    if (placing && index === solutionIndex) logMistake('wrong_ripple', index);
+    state.board[index] = placing ? 1 : 0;
+  }
   renderBoard();
   if (isSolved(state.board, state.level)) completeLevel();
   else saveCurrentBoard();
@@ -337,52 +410,95 @@ function setTool(tool) {
   });
 }
 
-function giveHint() {
-  if (!state.hints) return;
+function giveHint(type) {
+  const cost = type === 'reveal' ? 2 : 1;
+  if (state.hintTokens < cost) return;
   let target = -1;
+  const unresolved = [];
   for (let row = 0; row < state.level.size; row++) {
     const index = row * state.level.size + state.level.solution[row];
-    if (state.board[index] !== 2) { target = index; break; }
+    if (state.board[index] !== 2) unresolved.push(index);
   }
+  target = type === 'nudge' ? (unresolved.find(index => !state.run.nudged.includes(index)) ?? unresolved[0] ?? -1) : (unresolved[0] ?? -1);
   if (target < 0) return;
-  const row = Math.floor(target / state.level.size);
-  for (let col = 0; col < state.level.size; col++) {
-    const index = row * state.level.size + col;
-    if (state.board[index] === 2) state.board[index] = 0;
-  }
-  state.board[target] = 2;
-  state.hints--;
-  Playtest.track('hint_used', { puzzleId: state.level.id, lakeId: state.level.lakeId, remaining: state.hints });
+  state.hintTokens -= cost;
+  state.run.hintsUsed++;
+  if (type === 'reveal') {
+    const row = Math.floor(target / state.level.size);
+    for (let col = 0; col < state.level.size; col++) {
+      const index = row * state.level.size + col;
+      if (state.board[index] === 2) state.board[index] = 0;
+    }
+    state.board[target] = 2;
+    if (!state.run.revealed.includes(target)) state.run.revealed.push(target);
+    state.lockedMarks.add(target);
+  } else if (!state.run.nudged.includes(target)) state.run.nudged.push(target);
+  Playtest.track('hint_used', { puzzleId: state.level.id, lakeId: state.level.lakeId, hintType: type, tokenCost: cost, remaining: state.hintTokens });
+  els['hint-dialog'].close();
   renderBoard();
   document.querySelector(`[data-cell="${target}"]`)?.classList.add('hinted');
+  els['rule-message'].textContent = type === 'reveal' ? 'A friendly loon landed and locked that square.' : 'That glowing square is a safe place for a loon.';
+  els['rule-message'].classList.add('success');
   if (isSolved(state.board, state.level)) completeLevel();
   else saveCurrentBoard();
 }
 
+function isBetterResult(candidate, previous) {
+  return !previous || candidate.score > previous.score || (candidate.score === previous.score && candidate.durationSeconds < previous.durationSeconds);
+}
+
 function completeLevel() {
+  stopTimer();
   state.completed.add(state.level.id);
-  const usedHints = state.level.maxHints - state.hints;
-  const rating = Math.max(1, 3 - usedHints);
-  state.ratings[state.level.id] = Math.max(state.ratings[state.level.id] || 0, rating);
+  const durationSeconds = Math.max(1, state.run.elapsedSeconds);
+  const scoring = Race.scoreRun({ durationSeconds, hintsUsed: state.run.hintsUsed, mistakes: state.run.mistakes, parSeconds: state.level.parSeconds });
+  const result = {
+    puzzleId: state.level.id, lakeId: state.level.lakeId, lakeName: state.currentLake.name,
+    durationSeconds, hintsUsed: state.run.hintsUsed, mistakes: state.run.mistakes,
+    score: scoring.score, timePenalty: scoring.timePenalty, completedAt: new Date().toISOString()
+  };
+  const oldBestScore = state.ratings[state.level.id] || 0;
+  const featherGain = Math.max(0, result.score - oldBestScore);
+  state.featherBank += featherGain;
+  state.ratings[state.level.id] = Math.max(oldBestScore, result.score);
+  if (isBetterResult(result, state.results[state.level.id])) state.results[state.level.id] = result;
   delete state.boards[state.level.id];
-  delete state.hintState[state.level.id];
+  delete state.runStates[state.level.id];
   saveProgress();
-  const durationSeconds = Math.max(1, Math.round((Date.now() - state.puzzleStartedAt) / 1000));
   Playtest.track('puzzle_completed', {
     puzzleId: state.level.id, lakeId: state.level.lakeId, difficulty: state.level.difficulty,
-    durationSeconds, hintsUsed: usedHints, rating
+    durationSeconds, hintsUsed: result.hintsUsed, mistakes: result.mistakes, rating: result.score,
+    timePenalty: result.timePenalty, feathersBanked: featherGain
   });
   const completedCount = LEVELS.filter(level => state.completed.has(level.id)).length;
-  const milestone = Math.floor(completedCount / 4) * 4;
-  if (milestone >= 4 && !Playtest.hasPrompt(milestone)) state.pendingFeedbackMilestone = milestone;
+  const lakeComplete = isLakeComplete(state.currentLake);
+  if (lakeComplete && !Playtest.hasPrompt(completedCount)) state.pendingFeedbackMilestone = completedCount;
   playCompletionSound();
   const victory = VICTORY_LINES[state.level.lakeId - 1];
   els['win-cheer'].textContent = victory.cheer;
   els['win-title'].textContent = `${state.level.difficulty} is peaceful!`;
-  els['win-message'].textContent = victory.message;
-  els['feather-name'].textContent = victory.feather;
-  els['feather-score'].textContent = Array.from({ length: 3 }, (_, index) => index < rating ? '🪶' : '◇').join(' ');
-  els['feather-score'].setAttribute('aria-label', `${rating} of 3 feather rating`);
+  els['win-message'].textContent = `${victory.message}${result.timePenalty ? ' The sun dipped past par, costing one point.' : ''}`;
+  els['feather-name'].textContent = `${victory.feather} · ${featherGain ? `+${featherGain} banked` : 'best score kept'}`;
+  els['feather-score'].textContent = Array.from({ length: 5 }, (_, index) => index < result.score ? '🪶' : '◇').join(' ');
+  els['feather-score'].setAttribute('aria-label', `${result.score} of 5 feather rating`);
+  els['result-time'].textContent = Race.formatDuration(result.durationSeconds);
+  els['result-hints'].textContent = result.hintsUsed;
+  els['result-mistakes'].textContent = result.mistakes;
+  els['result-score'].textContent = `${result.score}/5`;
+  const puzzleMetrics = { ...result, puzzles: 1, feathers: result.score };
+  state.lastShareMetrics = puzzleMetrics;
+  els['lake-result'].hidden = !lakeComplete;
+  if (lakeComplete) {
+    const totals = Race.lakeTotals(state.currentLake.puzzles.map(puzzle => state.results[puzzle.id]).filter(Boolean), state.currentLake.name);
+    els['lake-result-title'].textContent = `${state.currentLake.name} totals`;
+    els['lake-total-time'].textContent = Race.formatDuration(totals.durationSeconds);
+    els['lake-total-hints'].textContent = totals.hintsUsed;
+    els['lake-total-mistakes'].textContent = totals.mistakes;
+    els['lake-total-feathers'].textContent = totals.feathers;
+    state.lastShareMetrics = totals;
+  }
+  els['race-share-status'].textContent = '';
+  updateWallet();
   const nextPuzzle = state.currentLake.puzzles[state.level.puzzleNumber];
   const nextLake = LAKES[state.level.lakeId];
   els['next-button'].textContent = nextPuzzle ? 'Next puzzle' : nextLake ? `Visit ${nextLake.name}` : 'Celebrate the full trail';
@@ -394,12 +510,13 @@ function completeLevel() {
 
 function resetBoard() {
   state.board = starterBoard(state.level);
-  state.hints = state.level.maxHints;
+  state.run.mistakes++;
+  state.run.revealed.forEach(index => { state.board[index] = 2; });
+  state.lockedMarks = new Set([...state.level.starterMarks, ...state.run.revealed]);
   delete state.boards[state.level.id];
-  delete state.hintState[state.level.id];
-  Playtest.track('puzzle_reset', { puzzleId: state.level.id, lakeId: state.level.lakeId });
+  Playtest.track('puzzle_reset', { puzzleId: state.level.id, lakeId: state.level.lakeId, mistakes: state.run.mistakes });
   if (state.tutorial) startTutorial();
-  else { renderBoard(); saveProgress(); }
+  else { renderBoard(); saveCurrentBoard(); }
 }
 
 function playCompletionSound() {
@@ -429,6 +546,7 @@ els['lake-list'].addEventListener('click', event => {
   const card = event.target.closest('[data-lake]');
   if (card && !card.disabled) openLake(card.dataset.lake);
 });
+els['weekly-drop'].addEventListener('click', event => openLake(event.currentTarget.dataset.lake));
 els['puzzle-list'].addEventListener('click', event => {
   const card = event.target.closest('[data-puzzle]');
   if (card && !card.disabled) startPuzzle(card.dataset.puzzle);
@@ -440,20 +558,31 @@ els['puzzle-grid'].addEventListener('click', event => {
 document.querySelectorAll('[data-tool]').forEach(button => button.addEventListener('click', () => setTool(button.dataset.tool)));
 els['back-button'].addEventListener('click', () => {
   if (state.view === 'game') {
-    if (!state.completed.has(state.level.id)) Playtest.track('puzzle_abandoned', { puzzleId: state.level.id, lakeId: state.level.lakeId, durationSeconds: Math.max(1, Math.round((Date.now() - state.puzzleStartedAt) / 1000)) });
+    stopTimer();
+    if (!state.completed.has(state.level.id)) Playtest.track('puzzle_abandoned', { puzzleId: state.level.id, lakeId: state.level.lakeId, durationSeconds: Math.max(1, state.run.elapsedSeconds), hintsUsed: state.run.hintsUsed, mistakes: state.run.mistakes });
     saveCurrentBoard();
     openLake(state.currentLake.id);
   }
   else { renderMap(); showView('map'); }
 });
-els['hint-button'].addEventListener('click', giveHint);
+els['hint-button'].addEventListener('click', () => { updateHintDialog(); els['hint-dialog'].showModal(); });
+els['nudge-hint-button'].addEventListener('click', () => giveHint('nudge'));
+els['reveal-hint-button'].addEventListener('click', () => giveHint('reveal'));
+els['buy-hint-button'].addEventListener('click', () => {
+  if (state.featherBank < Race.HINT_COST) return;
+  state.featherBank -= Race.HINT_COST;
+  state.hintTokens++;
+  saveProgress();
+  Playtest.track('hint_purchased', { cost: Race.HINT_COST, remainingFeathers: state.featherBank, hintTokens: state.hintTokens });
+  updateHintDialog();
+});
 els['reset-button'].addEventListener('click', resetBoard);
 els['tutorial-button'].addEventListener('click', startTutorial);
 els['tutorial-skip'].addEventListener('click', () => finishTutorial(true));
 els['sound-button'].addEventListener('click', () => { state.sound = !state.sound; updateSoundButton(); saveProgress(); });
 els['lab-button'].addEventListener('click', () => {
   if (state.view !== 'test') openLab();
-  else if (state.viewBeforeLab === 'game' && state.level) showView('game');
+  else if (state.viewBeforeLab === 'game' && state.level) { showView('game'); startTimer(); }
   else if (state.viewBeforeLab === 'levels' && state.currentLake) { renderJourney(); showView('levels'); }
   else { renderMap(); showView('map'); }
 });
@@ -469,6 +598,43 @@ els['next-button'].addEventListener('click', () => {
   }
   setTimeout(maybeAskFeedback);
 });
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (_) { /* use selection fallback */ }
+  }
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.append(area);
+  area.select();
+  const copied = document.execCommand('copy');
+  area.remove();
+  return copied;
+}
+
+async function shareRace(useNative) {
+  if (!state.lastShareMetrics) return;
+  const text = Race.buildShareText(state.lastShareMetrics, location.href.split('#')[0]);
+  try {
+    if (useNative && navigator.share) {
+      await navigator.share({ title: 'Loon Lakes race', text });
+      els['race-share-status'].textContent = 'Race card shared. Let the loon sprint begin!';
+      Playtest.track('race_shared', { method: 'native', lakeId: state.lastShareMetrics.lakeId || state.currentLake.id });
+    } else {
+      const copied = await copyText(text);
+      els['race-share-status'].textContent = copied ? 'Race metrics copied. Paste them anywhere.' : 'Select Share race to send your result.';
+      if (copied) Playtest.track('race_shared', { method: 'clipboard', lakeId: state.lastShareMetrics.lakeId || state.currentLake.id });
+    }
+  } catch (error) {
+    if (error?.name !== 'AbortError') els['race-share-status'].textContent = 'Sharing was blocked. Try Copy challenge instead.';
+  }
+}
+
+els['share-race-button'].addEventListener('click', () => shareRace(true));
+els['copy-race-button'].addEventListener('click', () => shareRace(false));
 
 els['copy-link-button'].addEventListener('click', async () => {
   try {
@@ -512,6 +678,6 @@ els['issue-form'].addEventListener('submit', event => {
 });
 
 loadProgress();
-Playtest.startSession({ version: 'playtest-beta-1', puzzleCount: LEVELS.length });
+Playtest.startSession({ version: 'race-beta-2', puzzleCount: LEVELS.length });
 renderMap();
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));

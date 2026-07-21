@@ -15,6 +15,7 @@
 - Leech Lake: [Minnesota DNR — Fun Fish Facts](https://files.dnr.state.mn.us/education_safety/education/minnaqua/leadersguide/appendix_1/7_6_fish_facts.pdf)
 - Lake Vermilion: [Minnesota DNR — Lake Vermilion](https://www.dnr.state.mn.us/vermilionlake/index.html)
 - Lake Superior: [National Park Service — Lake Superior](https://www.nps.gov/piro/learn/nature/lake-superior.htm) and [Minnesota DNR — Surfing the Big Lake](https://www.dnr.state.mn.us/mcvmagazine/issues/2026/may-jun/qa.html)
+- Lake of the Woods: [Minnesota DNR — Lake of the Woods](https://www.dnr.state.mn.us/lakeofthewoods/index.html)
 
 ## Planned production sources
 
