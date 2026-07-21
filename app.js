@@ -30,11 +30,15 @@ const NATURAL_SOUND_FILES = {
   yodel: 'assets/loon-yodel.wav',
   splash: 'assets/splash.wav'
 };
+const BACKGROUND_MUSIC_FILE = 'assets/background-music.mp3';
 const naturalSoundBuffers = new Map();
 const naturalSoundLoads = new Map();
-let backgroundMusicAudio = null;
+let backgroundMusicBuffer = null;
+let backgroundMusicLoad = null;
 let backgroundMusicSource = null;
 let backgroundMusicGain = null;
+let backgroundMusicStartedAt = 0;
+let backgroundMusicOffset = 0;
 
 const els = Object.fromEntries([
   'map-view','test-view','level-view','game-view','back-button','lab-button','settings-button','settings-dialog','sound-button','music-button',
@@ -420,31 +424,64 @@ function getEffectsOutput(ctx) {
   return effectsMasterGain;
 }
 
-function getBackgroundMusic() {
-  if (!backgroundMusicAudio) {
-    backgroundMusicAudio = new Audio('assets/background-music.m4a');
-    backgroundMusicAudio.loop = true;
-    backgroundMusicAudio.preload = 'auto';
-    backgroundMusicAudio.volume = 1;
-  }
-  const ctx = getAudioContext();
-  if (ctx && !backgroundMusicSource) {
-    backgroundMusicSource = ctx.createMediaElementSource(backgroundMusicAudio);
+function getBackgroundMusicOutput(ctx) {
+  if (!backgroundMusicGain) {
     backgroundMusicGain = ctx.createGain();
     backgroundMusicGain.gain.value = state.musicVolume;
-    backgroundMusicSource.connect(backgroundMusicGain).connect(ctx.destination);
+    backgroundMusicGain.connect(ctx.destination);
   }
-  return backgroundMusicAudio;
+  backgroundMusicGain.gain.setTargetAtTime(state.musicVolume, ctx.currentTime, .03);
+  return backgroundMusicGain;
+}
+
+function preloadBackgroundMusic() {
+  if (!state.music) return null;
+  const ctx = getAudioContext();
+  if (!ctx || backgroundMusicBuffer) return Promise.resolve(backgroundMusicBuffer);
+  if (backgroundMusicLoad) return backgroundMusicLoad;
+  backgroundMusicLoad = fetch(BACKGROUND_MUSIC_FILE)
+    .then(response => {
+      if (!response.ok) throw new Error(`Music request failed: ${response.status}`);
+      return response.arrayBuffer();
+    })
+    .then(data => ctx.decodeAudioData(data))
+    .then(buffer => { backgroundMusicBuffer = buffer; return buffer; })
+    .catch(() => null);
+  return backgroundMusicLoad;
 }
 
 function startBackgroundMusic() {
-  if (!state.music) return;
-  const music = getBackgroundMusic();
-  if (music.paused) void music.play().catch(() => { /* waits for the next user gesture */ });
+  if (!state.music || backgroundMusicSource) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  if (!backgroundMusicBuffer) {
+    const load = preloadBackgroundMusic();
+    if (load) void load.then(buffer => { if (buffer && state.music) startBackgroundMusic(); });
+    return;
+  }
+  const source = ctx.createBufferSource();
+  const duration = backgroundMusicBuffer.duration;
+  const offset = duration ? backgroundMusicOffset % duration : 0;
+  source.buffer = backgroundMusicBuffer;
+  source.loop = true;
+  source.connect(getBackgroundMusicOutput(ctx));
+  backgroundMusicStartedAt = ctx.currentTime;
+  backgroundMusicSource = source;
+  source.onended = () => { if (backgroundMusicSource === source) backgroundMusicSource = null; };
+  source.start(ctx.currentTime, offset);
 }
 
 function stopBackgroundMusic() {
-  backgroundMusicAudio?.pause();
+  if (!backgroundMusicSource || !feedbackAudioContext) return;
+  const source = backgroundMusicSource;
+  const duration = backgroundMusicBuffer?.duration || 0;
+  if (duration) {
+    backgroundMusicOffset = (backgroundMusicOffset + Math.max(0, feedbackAudioContext.currentTime - backgroundMusicStartedAt)) % duration;
+  }
+  backgroundMusicSource = null;
+  source.onended = null;
+  try { source.stop(); } catch (_) { /* already stopped */ }
+  source.disconnect();
 }
 
 function preloadNaturalSounds() {
@@ -943,6 +980,7 @@ els['issue-form'].addEventListener('submit', event => {
 
 loadProgress();
 preloadNaturalSounds();
+preloadBackgroundMusic();
 Playtest.startSession({ version: 'race-beta-3', puzzleCount: LEVELS.length });
 renderMap();
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));
