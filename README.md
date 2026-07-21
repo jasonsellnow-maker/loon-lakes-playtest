@@ -21,15 +21,18 @@ Serve this folder with any static web server and open it on a phone or desktop b
 - Point-the-way and reveal-and-lock hint choices
 - Per-puzzle race cards and full-lake totals with native sharing and copy fallback
 - Minnesota lake campaign trail with sourced lake lore
+- Recognizable lake silhouettes simplified from official Minnesota DNR Hydrography polygons
 - Loon and “rule out” tools
-- Guided tutorial, conflict feedback, hints, reset, saved progress, and sound preference
+- Guided tutorial, conflict feedback, hints, board reset, and saved progress
+- One-tap fresh start plus distinct loon, ripple, mistake, hint, and celebration sounds
+- Optional phone vibration feedback on supported browsers
 - Anonymous on-device playtest analytics, feedback checkpoints, issue reports, and JSON/CSV exports
 - Private playtest dashboard measuring tutorial completion, first-puzzle conversion, solve time, hints, resets, and quit hotspots
 - Responsive layout and installable web manifest
 
 ## Weekly lake release workflow
 
-1. Add one sourced lake record to `BASE_LAKES` in `puzzles.js`, including a unique region map, solution, release date, and original silhouette.
+1. Add one sourced lake record to `BASE_LAKES` in `puzzles.js`, including a unique region map, solution, release date, and a phone-friendly silhouette simplified from the DNR Hydrography polygon.
 2. Mark the current release with `weekly: true`; remove that flag from the prior release.
 3. Add the fact source to `ATTRIBUTIONS.md`.
 4. Run `npm test` and `npm run build`. Every generated orientation must have exactly one solution.
