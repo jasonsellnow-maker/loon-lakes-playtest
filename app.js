@@ -25,12 +25,13 @@ const state = {
 let feedbackAudioContext = null;
 let effectsMasterGain = null;
 const NATURAL_SOUND_FILES = {
-  wail: 'assets/loon-wail.m4a',
-  tremolo: 'assets/loon-tremolo.m4a',
-  yodel: 'assets/loon-yodel.m4a',
-  splash: 'assets/splash.m4a'
+  wail: 'assets/loon-wail.wav',
+  tremolo: 'assets/loon-tremolo.wav',
+  yodel: 'assets/loon-yodel.wav',
+  splash: 'assets/splash.wav'
 };
-const naturalSoundPlayers = new Map();
+const naturalSoundBuffers = new Map();
+const naturalSoundLoads = new Map();
 let backgroundMusicAudio = null;
 let backgroundMusicSource = null;
 let backgroundMusicGain = null;
@@ -450,32 +451,43 @@ function preloadNaturalSounds() {
   if (!state.sound) return;
   const ctx = getAudioContext();
   if (!ctx) return;
-  Object.keys(NATURAL_SOUND_FILES).forEach(name => getNaturalSoundPlayer(ctx, name));
+  Object.entries(NATURAL_SOUND_FILES).forEach(([name, url]) => {
+    if (naturalSoundBuffers.has(name) || naturalSoundLoads.has(name)) return;
+    const load = fetch(url)
+      .then(response => {
+        if (!response.ok) throw new Error(`Sound request failed: ${response.status}`);
+        return response.arrayBuffer();
+      })
+      .then(data => ctx.decodeAudioData(data))
+      .then(buffer => { naturalSoundBuffers.set(name, buffer); return buffer; })
+      .catch(() => null);
+    naturalSoundLoads.set(name, load);
+  });
 }
 
-function getNaturalSoundPlayer(ctx, name) {
-  if (!NATURAL_SOUND_FILES[name]) return null;
-  if (!naturalSoundPlayers.has(name)) {
-    const audio = new Audio(NATURAL_SOUND_FILES[name]);
-    audio.preload = 'auto';
-    audio.playsInline = true;
-    audio.volume = 1;
-    const source = ctx.createMediaElementSource(audio);
-    const gain = ctx.createGain();
-    source.connect(gain).connect(getEffectsOutput(ctx));
-    naturalSoundPlayers.set(name, { audio, gain });
+function playNaturalSound(ctx, name, options = {}) {
+  const { offset = 0, duration = 6, volume = 1, rate = 1 } = options;
+  const buffer = naturalSoundBuffers.get(name);
+  if (!buffer) {
+    preloadNaturalSounds();
+    const load = naturalSoundLoads.get(name);
+    if (!load) return false;
+    void load.then(loadedBuffer => {
+      if (!loadedBuffer || !state.sound) return;
+      const liveContext = getAudioContext();
+      if (liveContext) playNaturalSound(liveContext, name, options);
+    });
+    return true;
   }
-  return naturalSoundPlayers.get(name);
-}
-
-function playNaturalSound(ctx, name, { offset = 0, volume = 1, rate = 1 } = {}) {
-  const player = getNaturalSoundPlayer(ctx, name);
-  if (!player) return false;
-  player.audio.pause();
-  player.audio.currentTime = offset;
-  player.audio.playbackRate = rate;
-  player.gain.gain.setTargetAtTime(volume, ctx.currentTime, .01);
-  void player.audio.play().catch(() => { /* waits for the next direct tap */ });
+  const startOffset = Math.min(offset, Math.max(0, buffer.duration - .01));
+  const clipDuration = Math.min(duration, Math.max(.01, buffer.duration - startOffset));
+  const source = ctx.createBufferSource();
+  const gain = ctx.createGain();
+  source.buffer = buffer;
+  source.playbackRate.value = rate;
+  gain.gain.value = volume;
+  source.connect(gain).connect(getEffectsOutput(ctx));
+  source.start(ctx.currentTime, startOffset, clipDuration);
   return true;
 }
 
