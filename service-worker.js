@@ -1,5 +1,5 @@
-const CACHE = 'loon-lakes-v21';
-const FILES = ['./','./index.html','./styles.css?v=21','./puzzles.js?v=21','./playtest.js?v=21','./race.js?v=21','./app.js?v=21','./manifest.webmanifest','./loon-icon.svg','./assets/loon-wail.wav','./assets/loon-tremolo.wav','./assets/loon-yodel.wav','./assets/splash.wav','./assets/background-music.mp3'];
+const CACHE = 'loon-lakes-v26';
+const FILES = ['./','./index.html','./styles.css?v=26','./puzzles.js?v=26','./playtest.js?v=26','./race.js?v=26','./app.js?v=26','./manifest.webmanifest','./loon-icon.svg','./assets/loon-wail.wav','./assets/loon-tremolo.wav','./assets/loon-yodel.wav','./assets/splash.wav','./assets/background-music.mp3'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', event => event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request))));

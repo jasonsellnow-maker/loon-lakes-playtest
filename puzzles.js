@@ -14,35 +14,191 @@
   ];
 
   const TIERS = [
-    { name: 'Easy', starterCount: 4, maxHints: 3, note: 'Training ripples included' },
-    { name: 'Breezy', starterCount: 2, maxHints: 3, note: 'A little help from shore' },
-    { name: 'Tricky', starterCount: 1, maxHints: 2, note: 'Watch those diagonals' },
-    { name: 'Oh Fer Tough', starterCount: 0, maxHints: 1, note: 'No training ripples' },
-    { name: 'North Star', starterCount: 0, maxHints: 0, note: 'The biggest race on the water' }
+    { name: 'Easy', size: 5, starterCount: 4, maxHints: 3, note: 'A 5 × 5 warm-up with training ripples' },
+    { name: 'Breezy', size: 6, starterCount: 2, maxHints: 3, note: 'A 6 × 6 crossing with a little help from shore' },
+    { name: 'Tricky', size: 8, starterCount: 1, maxHints: 2, note: 'An 8 × 8 course—watch those diagonals' },
+    { name: 'Oh Fer Tough', size: 10, starterCount: 0, maxHints: 1, note: 'A 10 × 10 lake with no training ripples' },
+    { name: 'North Star', size: 12, starterCount: 0, maxHints: 0, note: 'A 12 × 12 North Star endurance race' }
   ];
 
-  function transformGrid(grid, transform) {
-    const size = grid.length;
-    return Array.from({ length: size }, (_, row) => Array.from({ length: size }, (_, col) => {
-      if (transform === 1) return grid[size - 1 - col][row];
-      if (transform === 2) return grid[size - 1 - row][size - 1 - col];
-      if (transform === 3) return grid[col][row];
-      if (transform === 4) return grid[row][size - 1 - col];
-      return grid[row][col];
-    }));
+  const LEVEL_FACTS = {
+    1: [
+      'Lake Itasca is the headwaters of the Mississippi River, where visitors can cross the young river on stepping stones.',
+      'Itasca State Park was established in 1891 to protect the old-growth pines around the lake and the Mississippi headwaters.',
+      'The lake sits within Itasca State Park, Minnesota’s oldest state park.',
+      'Itasca’s name comes from “veritas caput,” a Latin phrase meaning “true head” of the Mississippi.',
+      'The Mississippi leaves Lake Itasca as a narrow stream before beginning its 2,300-mile trip to the Gulf of Mexico.'
+    ],
+    2: [
+      'Lake Minnetonka is a sprawling chain of bays and channels west of Minneapolis, not one simple round lake.',
+      'Its Dakota name, Mde Wakáŋ, is commonly translated as “spirit water.”',
+      'Prince made Lake Minnetonka famous in Purple Rain, though the movie’s water scene was filmed on the Minnesota River.',
+      'The lake has more than 100 miles of shoreline, so a short outing can feel like a real expedition.',
+      'Excelsior, Wayzata, and other lakeside towns make Minnetonka a classic Minnesota boating destination.'
+    ],
+    3: [
+      'Mille Lacs is a premier walleye lake that also produces trophy smallmouth bass, muskies, and northern pike.',
+      '“Mille Lacs” is French for “a thousand lakes,” a name that stuck long before Minnesota became the Land of 10,000 Lakes.',
+      'At more than 130,000 acres, Mille Lacs is Minnesota’s second-largest inland lake.',
+      'The lake’s big, open water can build waves quickly—one reason anglers treat weather checks as part of the trip.',
+      'Mille Lacs has long been central to Ojibwe culture, recreation, and the state’s fishing story.'
+    ],
+    4: [
+      'Leech Lake hosts the wonderfully weird International Eelpout Festival, with an ice bar, eelpout curling, and a giant fishing trophy.',
+      'Leech Lake is Minnesota’s third-largest lake entirely within the state.',
+      'Deep, clear Walker Bay reaches far below the lake’s broad, wind-swept main basin.',
+      'Much of the shoreline lies within Chippewa National Forest, giving Leech Lake a distinctly northwoods feel.',
+      'The lake is part of the homeland of the Leech Lake Band of Ojibwe.'
+    ],
+    5: [
+      'Lake Vermilion stretches 37 miles end to end and boasts 365 islands—one for every day of the year.',
+      'Vermilion has roughly 341 miles of shoreline, enough coast for countless quiet coves.',
+      'The lake is a popular gateway to Minnesota’s Iron Range and the Boundary Waters region.',
+      '“Vermilion” refers to a vivid red color, a fitting name in a landscape shaped by iron-rich country.',
+      'Lake Vermilion’s island maze makes navigation part of the adventure, even before the fishing starts.'
+    ],
+    6: [
+      'Lake Superior is the world’s largest freshwater lake by surface area.',
+      'Duluth surfers chase Lake Superior’s biggest waves during icy fall and winter storms.',
+      'Superior holds about 10 percent of the planet’s surface fresh water.',
+      'The lake’s deepest point is more than 1,300 feet below the surface.',
+      'Storms on Superior have inspired countless shipwreck stories, including the Edmund Fitzgerald.'
+    ],
+    7: [
+      'Nearly one third of Lake of the Woods’ 951,337 acres lies in Minnesota, making it the state’s largest lake.',
+      'Lake of the Woods has more than 14,000 islands scattered across the U.S.–Canada border.',
+      'The lake is famous for walleye, sauger, northern pike, sturgeon, and year-round fishing adventures.',
+      'The Rainy River feeds Lake of the Woods and is a well-known spring run for walleye and sturgeon.',
+      'The Northwest Angle on Lake of the Woods is the northernmost point of the contiguous United States.'
+    ]
+  };
+
+  function seededRandom(seed) {
+    let value = seed >>> 0;
+    return () => {
+      value = (value * 1664525 + 1013904223) >>> 0;
+      return value / 4294967296;
+    };
   }
 
-  function transformSolution(solution, transform) {
-    const size = solution.length;
-    const result = Array(size).fill(-1);
-    solution.forEach((col, row) => {
-      if (transform === 1) result[col] = size - 1 - row;
-      else if (transform === 2) result[size - 1 - row] = size - 1 - col;
-      else if (transform === 3) result[col] = row;
-      else if (transform === 4) result[row] = size - 1 - col;
-      else result[row] = col;
-    });
-    return result;
+  function courseSolution(size, variant) {
+    const odds = Array.from({ length: size }, (_, index) => index).filter(index => index % 2);
+    const evens = Array.from({ length: size }, (_, index) => index).filter(index => !(index % 2));
+    const course = [...odds, ...evens];
+    return variant % 2 ? [...course].reverse() : course;
+  }
+
+  function countSolutions(regions, limit = 2) {
+    const size = regions.length;
+    const usedColumns = Array(size).fill(false);
+    const usedRegions = Array(size).fill(false);
+    const columns = Array(size).fill(-1);
+    let count = 0;
+    function search(row) {
+      if (count >= limit) return;
+      if (row === size) { count++; return; }
+      for (let column = 0; column < size; column++) {
+        const region = regions[row][column];
+        if (usedColumns[column] || usedRegions[region] || (row && Math.abs(columns[row - 1] - column) <= 1)) continue;
+        usedColumns[column] = usedRegions[region] = true;
+        columns[row] = column;
+        search(row + 1);
+        usedColumns[column] = usedRegions[region] = false;
+      }
+    }
+    search(0);
+    return count;
+  }
+
+  const ORTHOGONAL_STEPS = [[-1,0],[1,0],[0,-1],[0,1]];
+
+  function orthogonalNeighbors(grid, row, column) {
+    const size = grid.length;
+    return ORTHOGONAL_STEPS.map(([rowDelta, columnDelta]) => [row + rowDelta, column + columnDelta])
+      .filter(([nextRow, nextColumn]) => nextRow >= 0 && nextRow < size && nextColumn >= 0 && nextColumn < size);
+  }
+
+  function validateContiguousRegions(grid) {
+    if (!Array.isArray(grid) || !grid.length || grid.some(row => !Array.isArray(row) || row.length !== grid.length)) return false;
+    const visited = new Set();
+    const completedColors = new Set();
+    for (let row = 0; row < grid.length; row++) for (let column = 0; column < grid.length; column++) {
+      const start = row * grid.length + column;
+      if (visited.has(start)) continue;
+      const color = grid[row][column];
+      if (completedColors.has(color)) return false;
+      completedColors.add(color);
+      const queue = [[row, column]];
+      visited.add(start);
+      for (let pointer = 0; pointer < queue.length; pointer++) {
+        const [currentRow, currentColumn] = queue[pointer];
+        orthogonalNeighbors(grid, currentRow, currentColumn).forEach(([nextRow, nextColumn]) => {
+          const index = nextRow * grid.length + nextColumn;
+          if (!visited.has(index) && grid[nextRow][nextColumn] === color) {
+            visited.add(index);
+            queue.push([nextRow, nextColumn]);
+          }
+        });
+      }
+    }
+    return visited.size === grid.length ** 2;
+  }
+
+  function weightedPick(options, random) {
+    const total = options.reduce((sum, option) => sum + option.weight, 0);
+    let threshold = random() * total;
+    for (const option of options) {
+      threshold -= option.weight;
+      if (threshold <= 0) return option;
+    }
+    return options.at(-1);
+  }
+
+  function growRegion(regions, region, background, solutionCells, random, targetCells) {
+    let cells = 1;
+    while (cells < targetCells) {
+      const frontier = [];
+      for (let row = 0; row < regions.length; row++) for (let column = 0; column < regions.length; column++) {
+        if (regions[row][column] !== region) continue;
+        orthogonalNeighbors(regions, row, column).forEach(([nextRow, nextColumn]) => {
+          const index = nextRow * regions.length + nextColumn;
+          if (regions[nextRow][nextColumn] !== background || solutionCells.has(index)) return;
+          const sameColorNeighbors = orthogonalNeighbors(regions, nextRow, nextColumn)
+            .filter(([neighborRow, neighborColumn]) => regions[neighborRow][neighborColumn] === region).length;
+          frontier.push({ row: nextRow, column: nextColumn, weight: 1 + sameColorNeighbors * 2 + random() * .8 });
+        });
+      }
+      let placed = false;
+      while (frontier.length && !placed) {
+        const choice = weightedPick(frontier, random);
+        frontier.splice(frontier.indexOf(choice), 1);
+        regions[choice.row][choice.column] = region;
+        if (validateContiguousRegions(regions) && countSolutions(regions) === 1) {
+          cells++;
+          placed = true;
+        } else {
+          regions[choice.row][choice.column] = background;
+        }
+      }
+      if (!placed) return;
+    }
+  }
+
+  function buildRegions(size, solution, seed) {
+    const solutionCells = new Set(solution.map((column, row) => row * size + column));
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const random = seededRandom(seed + attempt * 7919);
+      const background = (seed + attempt) % size;
+      const regions = Array.from({ length: size }, () => Array(size).fill(background));
+      solution.forEach((column, row) => { if (row !== background) regions[row][column] = row; });
+      for (let region = 0; region < size; region++) {
+        if (region === background) continue;
+        const targetCells = Math.max(2, Math.floor(size * (.45 + random() * .3)));
+        growRegion(regions, region, background, solutionCells, random, targetCells);
+      }
+      if (validateContiguousRegions(regions) && countSolutions(regions) === 1) return regions;
+    }
+    throw new Error(`Unable to generate contiguous regions for ${size}×${size} puzzle.`);
   }
 
   function starterMarks(solution, count) {
@@ -54,9 +210,10 @@
   }
 
   const LAKES = BASE_LAKES.map(base => {
-    const lake = { id: base.id, name: base.name, fact: base.fact, sourceName: base.sourceName, sourceUrl: base.sourceUrl, shape: base.shape, releaseDate: base.releaseDate || '', weekly: base.weekly === true };
+    const facts = LEVEL_FACTS[base.id];
+    const lake = { id: base.id, name: base.name, fact: facts[0], sourceName: base.sourceName, sourceUrl: base.sourceUrl, shape: base.shape, releaseDate: base.releaseDate || '', weekly: base.weekly === true };
     lake.puzzles = TIERS.map((tier, index) => {
-      const solution = transformSolution(base.solution, index);
+      const solution = courseSolution(tier.size, base.id * 3 + index);
       return {
         id: `${base.id}-${index + 1}`,
         lakeId: base.id,
@@ -64,16 +221,16 @@
         name: base.name,
         difficulty: tier.name,
         difficultyNote: tier.note,
-        size: base.size,
-        fact: base.fact,
+        size: tier.size,
+        fact: facts[index],
         sourceName: base.sourceName,
         sourceUrl: base.sourceUrl,
         shape: base.shape,
-        regions: transformGrid(base.regions, index),
+        regions: buildRegions(tier.size, solution, base.id * 100 + index),
         solution,
-        starterMarks: starterMarks(solution, Math.min(tier.starterCount, base.size - 1)),
+        starterMarks: starterMarks(solution, Math.min(tier.starterCount, tier.size - 1)),
         maxHints: tier.maxHints,
-        parSeconds: base.size * 35 + index * 35
+        parSeconds: tier.size * 45 + index * 30
       };
     });
     return lake;
@@ -102,5 +259,5 @@
     return loons === level.size && findConflicts(board, level).size === 0;
   }
 
-  return { LAKES, LEVELS, TIERS, findConflicts, isSolved };
+  return { LAKES, LEVELS, TIERS, findConflicts, isSolved, validateContiguousRegions };
 });
