@@ -2,8 +2,21 @@ const { LAKES, LEVELS, findConflicts, isSolved } = window.LoonPuzzle;
 const Playtest = window.LoonPlaytest;
 const Race = window.LoonRace;
 const STORAGE_KEY = 'loon-lakes-progress-v1';
-const AUDIO_MIX_VERSION = 2;
-const REGION_COLORS = ['#b9dfd5','#d8e7bd','#f1d4a8','#b9d7ea','#d8c8e7','#f0bfc0','#c9ddd2','#e8d9a6'];
+const AUDIO_MIX_VERSION = 3;
+const REGION_COLORS = [
+  '#E69F00', '#56B4E9', '#009E73', '#F0E442', '#0072B2',
+  '#D55E00', '#CC79A7', '#6F4E7C', '#2A9D8F', '#8C6D31',
+  '#A6CEE3', '#B2DF8A', '#FB9A99', '#FDBF6F', '#CAB2D6',
+  '#FFFF99', '#1B9E77', '#D95F02', '#7570B3', '#E7298A'
+];
+const REGION_MARKER_COLORS = REGION_COLORS.map(color => {
+  const channels = color.slice(1).match(/.{2}/g).map(value => Number.parseInt(value, 16) / 255);
+  const luminance = channels.map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4)
+    .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+  const whiteContrast = 1.05 / (luminance + .05);
+  const blackContrast = (luminance + .05) / .05;
+  return whiteContrast > blackContrast ? '#FFFFFF' : '#111111';
+});
 const VICTORY_LINES = [
   { cheer: 'Oh fer cute!', message: 'You gave every loon some elbow room. The Mississippi may proceed.', feather: 'Headwaters Feather' },
   { cheer: 'That deserves a loon call!', message: 'You purified yourself in the logic of Lake Minnetonka.', feather: 'Purple Ripple Feather' },
@@ -17,13 +30,14 @@ const VICTORY_LINES = [
 const state = {
   completed: new Set(), ratings: {}, results: {}, boards: {}, runStates: {}, currentLake: null,
   level: null, board: [], lockedMarks: new Set(), tool: 'loon', hintTokens: 3, featherBank: 0,
-  run: null, timerInterval: null, sound: true, music: true, effectsVolume: .85, musicVolume: .08,
+  run: null, timerInterval: null, sound: true, music: true, effectsVolume: 1.0, musicVolume: .08,
   haptics: true, tutorialSeen: false, tutorial: null, view: 'map',
   pendingFeedbackMilestone: 0, viewBeforeLab: 'map', lastShareMetrics: null
 };
 
 let feedbackAudioContext = null;
 let effectsMasterGain = null;
+let effectsCompressor = null;
 const NATURAL_SOUND_FILES = {
   wail: 'assets/loon-wail.wav',
   tremolo: 'assets/loon-tremolo.wav',
@@ -39,6 +53,8 @@ let backgroundMusicSource = null;
 let backgroundMusicGain = null;
 let backgroundMusicStartedAt = 0;
 let backgroundMusicOffset = 0;
+let rippleGesture = null;
+let suppressGridClick = false;
 
 const els = Object.fromEntries([
   'map-view','test-view','level-view','game-view','back-button','lab-button','settings-button','settings-dialog','sound-button','music-button',
@@ -76,10 +92,10 @@ function loadProgress() {
     state.sound = saved.sound !== false;
     state.music = saved.music !== false;
     if (saved.audioMixVersion === AUDIO_MIX_VERSION) {
-      state.effectsVolume = Number.isFinite(saved.effectsVolume) ? Math.max(0, Math.min(1, saved.effectsVolume)) : .85;
+      state.effectsVolume = Number.isFinite(saved.effectsVolume) ? Math.max(0, Math.min(1, saved.effectsVolume)) : 1.0;
       state.musicVolume = Number.isFinite(saved.musicVolume) ? Math.max(0, Math.min(1, saved.musicVolume)) : .08;
     } else {
-      state.effectsVolume = .85;
+      state.effectsVolume = 1.0;
       state.musicVolume = .08;
     }
     state.haptics = saved.haptics !== false;
@@ -315,7 +331,7 @@ function startPuzzle(id) {
   state.tutorial = null;
   els['level-number'].textContent = `${state.currentLake.name} · Puzzle ${state.level.puzzleNumber} of ${state.currentLake.puzzles.length}`;
   els['lake-title'].textContent = state.currentLake.name;
-  els['difficulty-chip'].textContent = state.level.difficulty;
+  els['difficulty-chip'].textContent = `${state.level.difficulty} · ${state.level.size}×${state.level.size}`;
   els['lake-fact'].textContent = state.level.fact;
   els['fact-source'].href = state.level.sourceUrl;
   els['fact-source'].textContent = `${state.level.sourceName} ↗`;
@@ -384,7 +400,7 @@ function renderBoard() {
     ].join(' ');
     const given = state.lockedMarks.has(index);
     const content = value === 2 ? loonMarkup() : value === 1 ? '<span class="water-mark">×</span>' : '';
-    return `<button class="puzzle-cell ${borders} ${given ? 'given' : ''} ${conflicts.has(index) ? 'conflict' : ''}" data-cell="${index}" style="--region:${REGION_COLORS[region % REGION_COLORS.length]}" aria-label="Row ${row + 1}, column ${col + 1}${value === 2 ? ', loon' : value === 1 ? given ? ', given ripple' : ', ruled out' : ''}">${content}</button>`;
+    return `<button class="puzzle-cell ${borders} ${given ? 'given' : ''} ${conflicts.has(index) ? 'conflict' : ''}" data-cell="${index}" style="--region:${REGION_COLORS[region % REGION_COLORS.length]};--marker:${REGION_MARKER_COLORS[region % REGION_MARKER_COLORS.length]}" aria-label="Row ${row + 1}, column ${col + 1}${value === 2 ? ', loon' : value === 1 ? given ? ', given ripple' : ', ruled out' : ''}">${content}</button>`;
   }).join('');
   const count = state.board.filter(value => value === 2).length;
   els['loon-count'].textContent = `${count}/${level.size}`;
@@ -418,7 +434,14 @@ function getAudioContext() {
 function getEffectsOutput(ctx) {
   if (!effectsMasterGain) {
     effectsMasterGain = ctx.createGain();
-    effectsMasterGain.connect(ctx.destination);
+    effectsCompressor = ctx.createDynamicsCompressor();
+    effectsCompressor.threshold.value = -24;
+    effectsCompressor.knee.value = 30;
+    effectsCompressor.ratio.value = 12;
+    effectsCompressor.attack.value = .003;
+    effectsCompressor.release.value = .25;
+    effectsMasterGain.connect(effectsCompressor);
+    effectsCompressor.connect(ctx.destination);
   }
   effectsMasterGain.gain.setTargetAtTime(state.effectsVolume, ctx.currentTime, .02);
   return effectsMasterGain;
@@ -497,7 +520,10 @@ function preloadNaturalSounds() {
       })
       .then(data => ctx.decodeAudioData(data))
       .then(buffer => { naturalSoundBuffers.set(name, buffer); return buffer; })
-      .catch(() => null);
+      .catch(error => {
+        console.warn('Loon Lakes sound failed to load:', name, url, error);
+        return null;
+      });
     naturalSoundLoads.set(name, load);
   });
 }
@@ -505,6 +531,7 @@ function preloadNaturalSounds() {
 function playNaturalSound(ctx, name, options = {}) {
   const { offset = 0, duration = 6, volume = 1, rate = 1 } = options;
   const buffer = naturalSoundBuffers.get(name);
+  console.debug('Loon Lakes sound request:', { name, volume, loaded: Boolean(buffer), soundOn: state.sound, effectsVolume: state.effectsVolume });
   if (!buffer) {
     preloadNaturalSounds();
     const load = naturalSoundLoads.get(name);
@@ -571,11 +598,12 @@ function playActionFeedback(kind) {
   const ctx = getAudioContext();
   if (!ctx) return;
   if (kind === 'loon') {
-    playNaturalSound(ctx, 'wail', { duration: 4 });
+    playNaturalSound(ctx, 'splash', { duration: 1.2, volume: 1.25 });
+    window.setTimeout(() => playNaturalSound(ctx, 'wail', { duration: 5, volume: 1.6 }), 120);
   } else if (kind === 'ripple') {
-    playNaturalSound(ctx, 'splash', { duration: 6 });
+    playNaturalSound(ctx, 'splash', { duration: 1.5, volume: 1.45 });
   } else if (kind === 'mistake') {
-    playNaturalSound(ctx, 'tremolo', { duration: 4 });
+    playNaturalSound(ctx, 'tremolo', { duration: 2.5, volume: 1.6 });
   } else if (kind === 'hintNudge') {
     scheduleTone(ctx, { from: 587, duration: .14, volume: .035 });
     scheduleTone(ctx, { at: .1, from: 784, duration: .2, volume: .038 });
@@ -596,7 +624,7 @@ function useCell(index) {
     const steps = tutorialSteps();
     const step = steps[state.tutorial.step];
     if (index !== step.target || state.tool !== step.tool) {
-      playActionFeedback('mistake');
+      playActionFeedback('tap');
       els['rule-message'].textContent = 'Not that puddle—follow the glow, you betcha!';
       document.querySelector(`[data-cell="${step.target}"]`)?.classList.add('tutorial-nudge');
       return;
@@ -608,18 +636,18 @@ function useCell(index) {
     else { renderBoard(); saveCurrentBoard(); }
     return;
   }
-  const row = Math.floor(index / state.level.size);
-  const solutionIndex = row * state.level.size + state.level.solution[row];
   let feedback = 'tap';
   if (state.tool === 'loon') {
     const placing = state.board[index] !== 2;
-    if (placing && index !== solutionIndex) { logMistake('wrong_loon', index); feedback = 'mistake'; }
-    else if (placing) feedback = 'loon';
     state.board[index] = placing ? 2 : 0;
+    if (placing && findConflicts(state.board, state.level).has(index)) {
+      logMistake('conflicting_loon', index);
+      feedback = 'mistake';
+    } else if (placing) feedback = 'loon';
   } else {
     const placing = state.board[index] !== 1;
-    if (placing && index === solutionIndex) { logMistake('wrong_ripple', index); feedback = 'mistake'; }
-    else if (placing) feedback = 'ripple';
+    if (placing && state.board[index] === 2) return;
+    if (placing) feedback = 'ripple';
     state.board[index] = placing ? 1 : 0;
   }
   playActionFeedback(feedback);
@@ -630,11 +658,67 @@ function useCell(index) {
 
 function setTool(tool) {
   state.tool = tool;
+  els['puzzle-grid'].classList.toggle('ripple-mode', tool === 'ripple');
   document.querySelectorAll('[data-tool]').forEach(button => {
     const active = button.dataset.tool === tool;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
+}
+
+function paintRipple(index, withSound = false) {
+  if (!state.level || state.lockedMarks.has(index) || state.board[index] !== 0) return false;
+  state.board[index] = 1;
+  if (withSound) playActionFeedback('ripple');
+  else vibrate(5);
+  renderBoard();
+  saveCurrentBoard();
+  return true;
+}
+
+function rippleCellAt(clientX, clientY) {
+  const cell = document.elementFromPoint(clientX, clientY)?.closest('[data-cell]');
+  if (!cell || !els['puzzle-grid'].contains(cell)) return null;
+  return Number(cell.dataset.cell);
+}
+
+function beginRippleGesture(event) {
+  if (state.view !== 'game' || state.tool !== 'water' || state.tutorial || event.isPrimary === false || event.button > 0) return;
+  const cell = event.target.closest('[data-cell]');
+  if (!cell) return;
+  const index = Number(cell.dataset.cell);
+  if (state.lockedMarks.has(index) || state.board[index] === 2) return;
+  event.preventDefault();
+  suppressGridClick = true;
+  rippleGesture = {
+    pointerId: event.pointerId,
+    startIndex: index,
+    startedOnRipple: state.board[index] === 1,
+    visited: new Set([index]),
+    moved: false,
+    sounded: false
+  };
+  els['puzzle-grid'].setPointerCapture?.(event.pointerId);
+  if (!rippleGesture.startedOnRipple && paintRipple(index, true)) rippleGesture.sounded = true;
+}
+
+function extendRippleGesture(event) {
+  if (!rippleGesture || event.pointerId !== rippleGesture.pointerId) return;
+  event.preventDefault();
+  const index = rippleCellAt(event.clientX, event.clientY);
+  if (index === null || rippleGesture.visited.has(index)) return;
+  rippleGesture.moved = true;
+  rippleGesture.visited.add(index);
+  const painted = paintRipple(index, !rippleGesture.sounded);
+  if (painted) rippleGesture.sounded = true;
+}
+
+function endRippleGesture(event, cancelled = false) {
+  if (!rippleGesture || event.pointerId !== rippleGesture.pointerId) return;
+  const gesture = rippleGesture;
+  rippleGesture = null;
+  if (!cancelled && !gesture.moved && gesture.startedOnRipple) useCell(gesture.startIndex);
+  window.setTimeout(() => { suppressGridClick = false; }, 0);
 }
 
 function giveHint(type) {
@@ -738,7 +822,6 @@ function completeLevel() {
 
 function resetBoard() {
   state.board = starterBoard(state.level);
-  state.run.mistakes++;
   playActionFeedback('reset');
   state.run.revealed.forEach(index => { state.board[index] = 2; });
   state.lockedMarks = new Set([...state.level.starterMarks, ...state.run.revealed]);
@@ -753,7 +836,12 @@ function playCompletionSound() {
   if (!state.sound) return;
   const ctx = getAudioContext();
   if (!ctx) return;
-  if (playNaturalSound(ctx, 'yodel', { duration: 6 })) return;
+  const playedYodel = playNaturalSound(ctx, 'yodel', { duration: 6, volume: 1.8 });
+  if (playedYodel) {
+    window.setTimeout(() => playNaturalSound(ctx, 'wail', { duration: 5, volume: 1.5 }), 900);
+    window.setTimeout(() => playNaturalSound(ctx, 'tremolo', { duration: 3, volume: 1.25 }), 1600);
+    return;
+  }
   [392, 523.25, 659.25, 783.99].forEach((frequency, index) => {
     const osc = ctx.createOscillator(), gain = ctx.createGain();
     osc.type = 'sine'; osc.frequency.value = frequency;
@@ -800,7 +888,14 @@ function updateHapticButton() {
   els['haptic-button'].setAttribute('aria-pressed', String(supported && state.haptics));
 }
 
+function unlockAudio() {
+  const ctx = getAudioContext();
+  if (ctx && ctx.state === 'suspended') void ctx.resume();
+  preloadNaturalSounds();
+  preloadBackgroundMusic();
+}
 document.addEventListener('pointerdown', event => {
+  unlockAudio();
   startBackgroundMusic();
   if (event.pointerType === 'touch' && event.target.closest('button:not(:disabled)')) vibrate(7);
 });
@@ -815,9 +910,14 @@ els['puzzle-list'].addEventListener('click', event => {
   if (card && !card.disabled) startPuzzle(card.dataset.puzzle);
 });
 els['puzzle-grid'].addEventListener('click', event => {
+  if (suppressGridClick) return;
   const cell = event.target.closest('[data-cell]');
   if (cell) useCell(Number(cell.dataset.cell));
 });
+els['puzzle-grid'].addEventListener('pointerdown', beginRippleGesture);
+els['puzzle-grid'].addEventListener('pointermove', extendRippleGesture);
+els['puzzle-grid'].addEventListener('pointerup', event => endRippleGesture(event));
+els['puzzle-grid'].addEventListener('pointercancel', event => endRippleGesture(event, true));
 document.querySelectorAll('[data-tool]').forEach(button => button.addEventListener('click', () => setTool(button.dataset.tool)));
 els['back-button'].addEventListener('click', () => {
   if (state.view === 'game') {

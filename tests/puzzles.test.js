@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { LAKES, LEVELS, findConflicts, isSolved } = require('../puzzles.js');
+const { LAKES, LEVELS, findConflicts, isSolved, validateContiguousRegions } = require('../puzzles.js');
 
 function countSolutions(level, limit = 2) {
   const usedColumns = Array(level.size).fill(false);
@@ -27,6 +27,7 @@ for (const level of LEVELS) {
   assert.equal(level.regions.length, level.size, `${level.name}: correct row count`);
   assert.ok(level.regions.every(row => row.length === level.size), `${level.name}: square region map`);
   assert.equal(new Set(level.regions.flat()).size, level.size, `${level.name}: one region per loon`);
+  assert.equal(validateContiguousRegions(level.regions), true, `${level.name}: every color zone is contiguous`);
   assert.equal(countSolutions(level), 1, `${level.name}: exactly one solution`);
   const solved = Array(level.size ** 2).fill(0);
   level.solution.forEach((col, row) => { solved[row * level.size + col] = 2; });
@@ -42,6 +43,9 @@ for (const lake of LAKES) {
   const layouts = new Set(lake.puzzles.map(level => JSON.stringify(level.regions)));
   assert.equal(layouts.size, 5, `${lake.name}: five distinct board orientations`);
 }
-assert.equal(LAKES.at(-1).puzzles[0].size, 8, 'weekly lake introduces an 8 by 8 challenge');
+for (const lake of LAKES) {
+  assert.deepEqual(lake.puzzles.map(level => level.size), [5, 6, 8, 10, 12], `${lake.name}: boards grow from Easy to North Star`);
+  assert.equal(new Set(lake.puzzles.map(level => level.fact)).size, 5, `${lake.name}: one lake fact per level`);
+}
 
 console.log(`Verified ${LEVELS.length} unique Loon Lakes puzzles.`);
