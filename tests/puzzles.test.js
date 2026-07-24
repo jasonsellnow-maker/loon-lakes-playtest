@@ -28,6 +28,7 @@ for (const level of LEVELS) {
   assert.ok(level.regions.every(row => row.length === level.size), `${level.name}: square region map`);
   assert.equal(new Set(level.regions.flat()).size, level.size, `${level.name}: one region per loon`);
   assert.equal(validateContiguousRegions(level.regions), true, `${level.name}: every color zone is contiguous`);
+  assert.equal(level.starterMarks.length, 0, `${level.id}: starts with an unmarked board`);
   assert.equal(countSolutions(level), 1, `${level.name}: exactly one solution`);
   const solved = Array(level.size ** 2).fill(0);
   level.solution.forEach((col, row) => { solved[row * level.size + col] = 2; });

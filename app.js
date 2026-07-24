@@ -9,14 +9,6 @@ const REGION_COLORS = [
   '#A6CEE3', '#B2DF8A', '#FB9A99', '#FDBF6F', '#CAB2D6',
   '#FFFF99', '#1B9E77', '#D95F02', '#7570B3', '#E7298A'
 ];
-const REGION_MARKER_COLORS = REGION_COLORS.map(color => {
-  const channels = color.slice(1).match(/.{2}/g).map(value => Number.parseInt(value, 16) / 255);
-  const luminance = channels.map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4)
-    .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
-  const whiteContrast = 1.05 / (luminance + .05);
-  const blackContrast = (luminance + .05) / .05;
-  return whiteContrast > blackContrast ? '#FFFFFF' : '#111111';
-});
 const VICTORY_LINES = [
   { cheer: 'Oh fer cute!', message: 'You gave every loon some elbow room. The Mississippi may proceed.', feather: 'Headwaters Feather' },
   { cheer: 'That deserves a loon call!', message: 'You purified yourself in the logic of Lake Minnetonka.', feather: 'Purple Ripple Feather' },
@@ -253,10 +245,11 @@ function showView(name) {
   els['test-view'].classList.toggle('active', name === 'test');
   els['level-view'].classList.toggle('active', name === 'levels');
   els['game-view'].classList.toggle('active', name === 'game');
+  document.body.classList.toggle('game-active', name === 'game');
   els['back-button'].classList.toggle('hidden', name === 'map' || name === 'test');
   els['lab-button'].setAttribute('aria-pressed', String(name === 'test'));
   els['lab-button'].setAttribute('aria-label', name === 'test' ? 'Close playtest lab' : 'Open playtest lab');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({ top: 0, behavior: name === 'game' ? 'auto' : 'smooth' });
 }
 
 function openLake(id) {
@@ -311,7 +304,7 @@ function updateHintDialog() {
 function saveCurrentBoard() {
   if (!state.level || state.completed.has(state.level.id)) return;
   state.boards[state.level.id] = [...state.board];
-  state.runStates[state.level.id] = { ...state.run, revealed: [...(state.run?.revealed || [])], nudged: [...(state.run?.nudged || [])] };
+  state.runStates[state.level.id] = { ...state.run, revealed: [...(state.run?.revealed || [])], nudged: [...(state.run?.nudged || [])], mistakeReveals: [...(state.run?.mistakeReveals || [])] };
   saveProgress();
 }
 
@@ -320,9 +313,10 @@ function startPuzzle(id) {
   state.currentLake = LAKES.find(lake => lake.id === state.level.lakeId);
   const savedBoard = state.boards[state.level.id];
   const resumed = Array.isArray(savedBoard);
-  state.run = state.runStates[state.level.id] || { elapsedSeconds: 0, hintsUsed: 0, mistakes: 0, revealed: [], nudged: [] };
+  state.run = state.runStates[state.level.id] || { elapsedSeconds: 0, hintsUsed: 0, mistakes: 0, revealed: [], nudged: [], mistakeReveals: [] };
   if (!Array.isArray(state.run.revealed)) state.run.revealed = [];
   if (!Array.isArray(state.run.nudged)) state.run.nudged = [];
+  if (!Array.isArray(state.run.mistakeReveals)) state.run.mistakeReveals = [];
   state.lockedMarks = new Set([...state.level.starterMarks, ...state.run.revealed]);
   state.board = Array.isArray(savedBoard) && savedBoard.length === state.level.size ** 2 ? [...savedBoard] : starterBoard(state.level);
   state.level.starterMarks.forEach(index => { state.board[index] = 1; });
@@ -400,7 +394,7 @@ function renderBoard() {
     ].join(' ');
     const given = state.lockedMarks.has(index);
     const content = value === 2 ? loonMarkup() : value === 1 ? '<span class="water-mark">×</span>' : '';
-    return `<button class="puzzle-cell ${borders} ${given ? 'given' : ''} ${conflicts.has(index) ? 'conflict' : ''}" data-cell="${index}" style="--region:${REGION_COLORS[region % REGION_COLORS.length]};--marker:${REGION_MARKER_COLORS[region % REGION_MARKER_COLORS.length]}" aria-label="Row ${row + 1}, column ${col + 1}${value === 2 ? ', loon' : value === 1 ? given ? ', given ripple' : ', ruled out' : ''}">${content}</button>`;
+    return `<button class="puzzle-cell ${borders} ${given ? 'given' : ''} ${conflicts.has(index) ? 'conflict' : ''} ${state.run?.mistakeReveals?.includes(index) ? 'mistake-revealed' : ''}" data-cell="${index}" style="--region:${REGION_COLORS[region % REGION_COLORS.length]}" aria-label="Row ${row + 1}, column ${col + 1}${value === 2 ? ', loon' : value === 1 ? given ? ', given ripple' : ', ruled out' : ''}">${content}</button>`;
   }).join('');
   const count = state.board.filter(value => value === 2).length;
   els['loon-count'].textContent = `${count}/${level.size}`;
@@ -658,7 +652,7 @@ function useCell(index) {
 
 function setTool(tool) {
   state.tool = tool;
-  els['puzzle-grid'].classList.toggle('ripple-mode', tool === 'ripple');
+  els['puzzle-grid'].classList.toggle('ripple-mode', tool === 'water');
   document.querySelectorAll('[data-tool]').forEach(button => {
     const active = button.dataset.tool === tool;
     button.classList.toggle('active', active);
@@ -718,23 +712,32 @@ function endRippleGesture(event, cancelled = false) {
   const gesture = rippleGesture;
   rippleGesture = null;
   if (!cancelled && !gesture.moved && gesture.startedOnRipple) useCell(gesture.startIndex);
-  window.setTimeout(() => { suppressGridClick = false; }, 0);
+  window.setTimeout(() => { suppressGridClick = false; }, 350);
 }
 
 function giveHint(type) {
   const cost = type === 'reveal' ? 2 : 1;
   if (state.hintTokens < cost) return;
-  let target = -1;
+  const mistakenLoons = state.board.reduce((indices, value, index) => {
+    if (value === 2 && !state.lockedMarks.has(index) && index % state.level.size !== state.level.solution[Math.floor(index / state.level.size)]) indices.push(index);
+    return indices;
+  }, []);
+  if (type === 'mistakes' && !mistakenLoons.length) {
+    els['rule-message'].textContent = 'No misplaced loons to reveal yet.';
+    return;
+  }
   const unresolved = [];
   for (let row = 0; row < state.level.size; row++) {
     const index = row * state.level.size + state.level.solution[row];
     if (state.board[index] !== 2) unresolved.push(index);
   }
-  target = type === 'nudge' ? (unresolved.find(index => !state.run.nudged.includes(index)) ?? unresolved[0] ?? -1) : (unresolved[0] ?? -1);
-  if (target < 0) return;
+  const target = unresolved[0] ?? -1;
+  if (type === 'reveal' && target < 0) return;
   state.hintTokens -= cost;
   state.run.hintsUsed++;
-  if (type === 'reveal') {
+  if (type === 'mistakes') {
+    state.run.mistakeReveals = mistakenLoons;
+  } else if (type === 'reveal') {
     const row = Math.floor(target / state.level.size);
     for (let col = 0; col < state.level.size; col++) {
       const index = row * state.level.size + col;
@@ -743,13 +746,14 @@ function giveHint(type) {
     state.board[target] = 2;
     if (!state.run.revealed.includes(target)) state.run.revealed.push(target);
     state.lockedMarks.add(target);
-  } else if (!state.run.nudged.includes(target)) state.run.nudged.push(target);
+  }
   Playtest.track('hint_used', { puzzleId: state.level.id, lakeId: state.level.lakeId, hintType: type, tokenCost: cost, remaining: state.hintTokens });
   playActionFeedback(type === 'reveal' ? 'hintReveal' : 'hintNudge');
   els['hint-dialog'].close();
   renderBoard();
-  document.querySelector(`[data-cell="${target}"]`)?.classList.add('hinted');
-  els['rule-message'].textContent = type === 'reveal' ? 'A friendly loon landed and locked that square.' : 'That glowing square is a safe place for a loon.';
+  if (type === 'mistakes') mistakenLoons.forEach(index => document.querySelector(`[data-cell="${index}"]`)?.classList.add('hinted'));
+  else document.querySelector(`[data-cell="${target}"]`)?.classList.add('hinted');
+  els['rule-message'].textContent = type === 'reveal' ? 'A friendly loon landed and locked that square.' : 'The highlighted loons are misplaced.';
   els['rule-message'].classList.add('success');
   if (isSolved(state.board, state.level)) completeLevel();
   else saveCurrentBoard();
@@ -929,7 +933,7 @@ els['back-button'].addEventListener('click', () => {
   else { renderMap(); showView('map'); }
 });
 els['hint-button'].addEventListener('click', () => { updateHintDialog(); els['hint-dialog'].showModal(); });
-els['nudge-hint-button'].addEventListener('click', () => giveHint('nudge'));
+els['nudge-hint-button'].addEventListener('click', () => giveHint('mistakes'));
 els['reveal-hint-button'].addEventListener('click', () => giveHint('reveal'));
 els['buy-hint-button'].addEventListener('click', () => {
   if (state.featherBank < Race.HINT_COST) return;
