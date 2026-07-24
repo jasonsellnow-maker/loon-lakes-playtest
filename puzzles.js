@@ -14,9 +14,9 @@
   ];
 
   const TIERS = [
-    { name: 'Easy', size: 5, starterCount: 4, maxHints: 3, note: 'A 5 × 5 warm-up with training ripples' },
-    { name: 'Breezy', size: 6, starterCount: 2, maxHints: 3, note: 'A 6 × 6 crossing with a little help from shore' },
-    { name: 'Tricky', size: 8, starterCount: 1, maxHints: 2, note: 'An 8 × 8 course—watch those diagonals' },
+    { name: 'Easy', size: 5, starterCount: 0, maxHints: 3, note: 'A 5 × 5 warm-up' },
+    { name: 'Breezy', size: 6, starterCount: 0, maxHints: 3, note: 'A 6 × 6 crossing' },
+    { name: 'Tricky', size: 8, starterCount: 0, maxHints: 2, note: 'An 8 × 8 course—watch those diagonals' },
     { name: 'Oh Fer Tough', size: 10, starterCount: 0, maxHints: 1, note: 'A 10 × 10 lake with no training ripples' },
     { name: 'North Star', size: 12, starterCount: 0, maxHints: 0, note: 'A 12 × 12 North Star endurance race' }
   ];
